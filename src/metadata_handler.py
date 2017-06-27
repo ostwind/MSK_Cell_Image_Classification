@@ -4,24 +4,65 @@ import json
 import re
 import configargparse
 
-class table():
+class Table():
+	def __init__(self, table_loc):
+		self.not_init = False
+		self.table_loc = table_loc
+		self.read()
+
+	def read(self):
+		''' checks metatable is there. Removes /n and /t
+			in metadata file then loads metadata.json as pandas dataframe
+			todo: some heuristics to correct metadata.json in case of corruption
+		'''
+		if not os.path.isfile(self.table_loc):
+			print('No such file at %s' %(self.table_loc) )
+			self.not_init = True
+			return
+		try:
+			with open(self.table_loc, 'r') as t:
+				s = ''.join(t.read().split())
+			self.data = pd.read_json(s)
+		except IOError:
+			print("Cannot read %s, file corrupted" %(self.table_loc))
+
+	def _in_table(self, val, attr = 'File'):
+		return val in self.data[attr].values
+
+	def view(self, filename = []):
+		if not filename:
+			print(self.data)
+			return
+		# handling a string
+		if type(filename) == str:
+			filename = [filename]
+
+		for f in filename:
+			if not self._in_table(f):
+				print(f + ' not in database.')
+				continue
+			print(self.data[ self.data['File'] == f ])
+
+	def erase(self, key):
+		if key == 'delete this file':
+			os.remove(self.table_loc)
+			print('%s erased' %(self.table_loc))
+		else:
+			print('To erase this .json, type erase(\'delete this file\')')
+
+class EditTable(Table):
 	def __init__(self, input_dir, table_loc, bitdepth, resolution):
+		# call parent class's init: check file exists
+		super().__init__(table_loc)
 		self.bitdepth = bitdepth
 		self.resolution = resolution
-		self.table_loc = table_loc
 		self.input_dir = input_dir
 		self.attributes = ['File', 'Marker', 'BitDepth', 'Resolution']
 
-		if not os.path.isfile(table_loc):
-			self.write(instantiate = True)
-			return
-
-		self.read()
+		if self.not_init:
+		 	self.write(new_file = True)
 		self.add_dir()
 		self.write()
-
-	def _in_table(self, val):
-		return val in self.data['File'].values
 
 	def add_entry(self, filepath ):
 		''' generates file name and marker name, append new entry
@@ -53,32 +94,16 @@ class table():
 					self.add_entry( self.input_dir + f )
 
 		if self.repeats:
-			for f in self.repeats:
-				print(f)
 			print('%s entries in %s already exist in %s'
 			%(len(self.repeats), self.input_dir, self.table_loc.split('/')[-1]) )
 
-	def write(self, instantiate = False):
+	def write(self, new_file = False):
 		''' write to disk, if first time: write an empty table to file
 		'''
-		if instantiate:
-			print('%s does not exist, creating new table at source code.' %(self.table_loc))
+		if new_file:
+			print('Creating new table .json at %s' %(self.table_loc))
 			self.data = pd.DataFrame(columns = self.attributes)
 		self.data.to_json(self.table_loc)
-
-	def read(self):
-		''' removes /n and /t in metadata file then loads metadata.json
-			as pandas dataframe
-			todo: some heuristics to correct metadata.json in case of corruption
-		'''
-		try:
-			with open(self.table_loc, 'r') as t:
-				s = ''.join(t.read().split())
-			print(s)
-			self.data = pd.read_json(s)
-
-		except IOError:
-			print("Cannot read %s, file corrupted" %(self.table_loc))
 
 if __name__ == "__main__":
 	prev_dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
@@ -98,11 +123,14 @@ if __name__ == "__main__":
 	argp.add_argument('--bitdepth', help='bit depth of imported files (default = 0.293)', default=0.293)
 	args = argp.parse_args()
 
-	table(input_dir = args.dir,
+	t = EditTable(input_dir = args.dir,
 	table_loc = args.metadata_loc,
 	bitdepth = args.bitdepth,
 	resolution = [args.x_resolution, args.y_resolution])
 
+	t.view()
+	#t.erase('delete this file')
+
 # todo: view mode - file lookup
 # 		arbitrary data attributes (create new column to accomodate different attr)
-#		
+#		DB cleaning and reset - also file similarity identification
