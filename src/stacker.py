@@ -72,7 +72,6 @@ def f(file_dir = GE):
             if '.tif' in f:
                 inner_str = write_xmp()
                 #embed_xmp
-
     return
 
 f()

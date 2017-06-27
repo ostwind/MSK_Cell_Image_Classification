@@ -8,9 +8,9 @@ class Table():
 	def __init__(self, table_loc):
 		self.not_init = False
 		self.table_loc = table_loc
-		self.read()
+		self._read()
 
-	def read(self):
+	def _read(self):
 		''' checks metatable is there. Removes /n and /t
 			in metadata file then loads metadata.json as pandas dataframe
 			todo: some heuristics to correct metadata.json in case of corruption
@@ -29,19 +29,20 @@ class Table():
 	def _in_table(self, val, attr = 'File'):
 		return val in self.data[attr].values
 
-	def view(self, filename = []):
-		if not filename:
+	def view(self, lookup_vals = [], attr = 'File'):
+		if not lookup_vals:
 			print(self.data)
-			return
+			return self.data
 		# handling a string
-		if type(filename) == str:
-			filename = [filename]
+		if type(lookup_vals) != list:
+			lookup_vals = [lookup_vals]
 
-		for f in filename:
-			if not self._in_table(f):
-				print(f + ' not in database.')
+		for f in lookup_vals:
+			if not self._in_table(f, attr):
+				print(str(f) + ' not in database.')
 				continue
-			print(self.data[ self.data['File'] == f ])
+			print(self.data[ self.data[attr] == f ])
+		return self.data[ self.data[attr].isin(lookup_vals) ]
 
 	def erase(self, key):
 		if key == 'delete this file':
@@ -64,7 +65,7 @@ class EditTable(Table):
 		self.add_dir()
 		self.write()
 
-	def add_entry(self, filepath ):
+	def _add_entry(self, filepath ):
 		''' generates file name and marker name, append new entry
 			to self.data as a row if file name was not encountered before.
 		'''
@@ -91,7 +92,7 @@ class EditTable(Table):
 			for f in files:
 				if '.tif' in f:
 					#print(self.input_dir + '/' + f)
-					self.add_entry( self.input_dir + f )
+					self._add_entry( self.input_dir + f )
 
 		if self.repeats:
 			print('%s entries in %s already exist in %s'
@@ -106,12 +107,11 @@ class EditTable(Table):
 		self.data.to_json(self.table_loc)
 
 if __name__ == "__main__":
-	prev_dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
-	files_to_be_added = os.path.join(prev_dir, 'data/GE/')
+	#prev_dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
+	#files_to_be_added = os.path.join(prev_dir, 'data/GE/')
 
 	argp = configargparse.ArgParser()
-	argp.add_argument('--dir', help='directory path to import .tif files', default = files_to_be_added)
-	argp.add_argument('--view_mode', help='view current metadata (default = n)', choices=['y', 'n'], default='n')
+	argp.add_argument('--dir', help='directory path to import .tif files', default = None)
 
 	argp.add_argument(
 	'--metadata_loc',
@@ -123,14 +123,12 @@ if __name__ == "__main__":
 	argp.add_argument('--bitdepth', help='bit depth of imported files (default = 0.293)', default=0.293)
 	args = argp.parse_args()
 
-	t = EditTable(input_dir = args.dir,
-	table_loc = args.metadata_loc,
-	bitdepth = args.bitdepth,
-	resolution = [args.x_resolution, args.y_resolution])
+	if args.dir:
+		t = EditTable(input_dir = args.dir,
+		table_loc = args.metadata_loc,
+		bitdepth = args.bitdepth,
+		resolution = [args.x_resolution, args.y_resolution])
 
-	t.view()
-	#t.erase('delete this file')
+		t.view( lookup_vals = 0.293, attr = 'BitDepth')
 
-# todo: view mode - file lookup
-# 		arbitrary data attributes (create new column to accomodate different attr)
-#		DB cleaning and reset - also file similarity identification
+# todo: arbitrary data attributes (create new column to accomodate different attr)
