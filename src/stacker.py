@@ -48,8 +48,7 @@ def write_xmp(file_dir = GE):
                 filename = f.split('.')[0] + '.xml'
                 with open(xml_dir, 'r') as f:
                     with open(output_meta + filename, "w") as f1:
-                        print(xml_dir, output_meta+filename)
-
+                        #print(xml_dir, output_meta+filename)
                         Flag = True
                         for line in f:
                             if Flag:
