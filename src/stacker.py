@@ -1,11 +1,20 @@
 import os
 from libxmp import XMPFiles, consts
 from libxmp.utils import file_to_dict, object_to_dict
+from metadata_handler import Table, EditTable
 
 dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
 data_dir = os.path.join(dir, 'temp.tif')
 xml_dir = os.path.join(dir, 'src/template.xml')
 GE = os.path.join(dir, 'data/mock_GE/')
+
+'''
+gen header and xml templates
+edit templates
+put new xml files into tiff
+collect tiff into the same file calling tiffcp
+'''
+
 
 def gen_template():
     ''' extracts the PerkinElmer xmp as template
@@ -26,16 +35,6 @@ def embed_xmp(tiff_path = data_dir, xmp_path = xml_dir):
         raise IOError(("I/O error: cannot place {0} in {1}".format(xmp_path, file_path) ))
     xmpfile.put_xmp(xmp)
 
-def markers_list(file_dir = GE):
-    ''' returns a list of markers in given directory
-    '''
-    markers = []
-    for subdir, dirs, files in os.walk(file_dir):
-        for f in files:
-            if '.tif' in f:
-                markers.append(f.split('_')[0])
-    return markers
-
 def write_xmp(file_dir = GE):
     ''' writes on a copy of lab settings, from PE template
         into an intermediate dir
@@ -49,45 +48,27 @@ def write_xmp(file_dir = GE):
                 with open(xml_dir, 'r') as f:
                     with open(output_meta + filename, "w") as f1:
                         #print(xml_dir, output_meta+filename)
-                        Flag = True
+                        Flag = 1
                         for line in f:
                             if Flag:
-                                if "PerkinElmer-QPI-ImageDescription" in line:
-                                    Flag = False
+                                if "&lt;PerkinElmer-QPI-ImageDescription&gt;" in line:
+                                    Flag = 0
                                     continue
-                                f1.write(line)
+                                f1.write(line )
                             else:
-                                if "PerkinElmer-QPI-ImageDescription" in line:
-                                    Flag = True
-
-                        f.close()
-                        f1.close()
-    return
+                                Flag = 1
+                                f1.write(line )
 
 write_xmp()
 
-def f(file_dir = GE):
-    for subdir, dirs, files in os.walk(file_dir):
-        for f in files:
-            if '.tif' in f:
-                inner_str = write_xmp()
-                #embed_xmp
-    return
-
-f()
-
-# def write_header(template = str(dir) + '/src/header_template.xml'):
-#     #print(data_dir)
-#     xmpfile = XMPFiles( file_path=data_dir, open_forupdate=True )
-#     xmp = xmpfile.get_xmp()
+# def f(file_dir = GE):
+#     for subdir, dirs, files in os.walk(file_dir):
+#         for f in files:
+#             if '.tif' in f:
+#                 inner_str = write_xmp()
+#                 #embed_xmp
+#     return
 #
-#     #xmp = xmpfile.get_xmp()
-#     xmp.set_property(consts.XMP_NS_RDF, u'Alt', 'test1' )
-#
-#     with open(xml_dir, 'w') as output:
-#         output.write(xmp.serialize_and_format())
-#
-#     xmpfile.put_xmp(  xmp   )
-#     #print(diction)
-#     xmpfile.close_file()
-#     return 0
+# table_loc = os.getcwd()+'/metadata.json'
+# t = Table(table_loc)
+# t.view()

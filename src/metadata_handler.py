@@ -30,6 +30,9 @@ class Table():
 		return val in self.data[attr].values
 
 	def view(self, lookup_vals = [], attr = 'File'):
+		''' provides an internal view of the metadata table, also fetches
+			relevant entries as a pandas dataframe
+		'''
 		if not lookup_vals:
 			print(self.data)
 			return self.data
