@@ -15,7 +15,6 @@ put new xml files into tiff
 collect tiff into the same file calling tiffcp
 '''
 
-
 def gen_template():
     ''' extracts the PerkinElmer xmp as template
         and stores it at src
