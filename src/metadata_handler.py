@@ -72,18 +72,20 @@ class EditTable(Table):
 	def _add_entry(self, filepath ):
 		''' generates file name and marker name, append new entry
 			to self.data as a row if file name was not encountered before.
+			Default schema is GE: [filename, marker name, spot, bitdepth, resolution, mft]
 		'''
 		fname = filepath.split('/')[-1].split('.')[0]
-		marker_name = fname.split('_')[0]
-		spot = fname.split('_')[4]
-
 		if self._in_table(fname):
 			self.repeats.append(fname)
 			return
 
-		new_row = pd.DataFrame(
-		[[fname, marker_name, spot, self.bitdepth, self.resolution, self.mft ] ], columns = self.attributes)
-		self.data = self.data.append([new_row], ignore_index = True)
+		if self.mft == 'GE':
+			attr1 = fname.split('_')[0]
+			attr2 = fname.split('_')[4]
+
+			new_row = pd.DataFrame(
+			[[fname, attr1, attr2, self.bitdepth, self.resolution, self.mft ] ], columns = self.attributes)
+			self.data = self.data.append([new_row], ignore_index = True)
 
 	def add_dir(self):
 		''' traverse input_dir, ignoring files w/out .tif or .tiff extensions
@@ -97,7 +99,6 @@ class EditTable(Table):
 				return
 			for f in files:
 				if '.tif' in f:
-					#print(self.input_dir + '/' + f)
 					self._add_entry( self.input_dir + f )
 
 		if self.repeats:
@@ -113,37 +114,35 @@ class EditTable(Table):
 		self.data.to_json(self.table_loc)
 
 if __name__ == "__main__":
-	#prev_dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
-	#files_to_be_added = os.path.join(prev_dir, 'data/GE/')
-
 	argp = configargparse.ArgParser()
 
-	argp.add_argument(
-	'--metadata_loc',
-	help='location of metadata .json file (if none exists, new one will be created, default is current directory)',
-	default=os.getcwd()+'/metadata.json')
+	argp.add_argument('--meta_dir',
+	help='dir of metadata .json file (if none exists, default is ./metadata)',
+	default=os.getcwd()+'/metadata/')
 
 	argp.add_argument('--mft', help = 'microscope manufacture (default = GE)', default = 'GE')
-	argp.add_argument('--dir', help='directory path to import .tif files', default = None)
+	argp.add_argument('--dir', help='directory path to import .tif files (enter nothing to enter view mode)', default = None)
 	argp.add_argument('--y_resolution', help='Y resolution of imported files (default = 4000)', default= 4000)
 	argp.add_argument('--x_resolution', help='X resolution of imported files (default = 7000)', default= 7000)
 	argp.add_argument('--bitdepth', help='bit depth of imported files (default = 0.293)', default=0.293)
 	args = argp.parse_args()
 
+	if not args.dir:
+		v = Table(table_loc = args.meta_dir + args.mft + '.json')
+		v.view(lookup_vals = '004', attr = 'Spot')
+
 	if args.dir:
+		if not os.path.exists(args.meta_dir):
+			print(args.meta_dir)
+			os.makedirs(args.meta_dir)
+
 		t = EditTable(mft = args.mft,
 		input_dir = args.dir,
-		table_loc = args.metadata_loc,
+		table_loc = args.meta_dir + args.mft+'.json',
 		bitdepth = args.bitdepth,
 		resolution = [args.x_resolution, args.y_resolution])
-
 		#t.erase('delete this file')
-
-		t.view( lookup_vals = '004', attr = 'Spot')
-
-
 
 # todo:
 # ask about hardware/software so the naming scheme can be consulted
-# spot/view info and handling stacks in the same dir
 # arbitrary data attributes (create new column to accomodate different attr)
