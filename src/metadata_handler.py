@@ -6,7 +6,7 @@ import configargparse
 
 class Table():
 	def __init__(self, table_loc):
-		self.not_init = False
+		self.attributes = ['File', 'Marker', 'Spot', 'BitDepth', 'Resolution', 'Hardware']
 		self.table_loc = table_loc
 		self._read()
 
@@ -16,8 +16,8 @@ class Table():
 			todo: some heuristics to correct metadata.json in case of corruption
 		'''
 		if not os.path.isfile(self.table_loc):
-			print('No such file at %s' %(self.table_loc) )
-			self.not_init = True
+			print('No such file at %s, creating new table here' %(self.table_loc) )
+			self.data = pd.DataFrame(columns = self.attributes)
 			return
 		try:
 			with open(self.table_loc, 'r') as t:
@@ -56,16 +56,13 @@ class Table():
 
 class EditTable(Table):
 	def __init__(self, mft, input_dir, table_loc, bitdepth, resolution):
-		# call parent class's init: check file exists
+		# call parent class's init, i.e. check file exists, populate self.data
 		super().__init__(table_loc)
 		self.mft = mft
 		self.bitdepth = bitdepth
 		self.resolution = resolution
 		self.input_dir = input_dir
-		self.attributes = ['File', 'Marker', 'Spot', 'BitDepth', 'Resolution', 'Hardware']
 
-		if self.not_init:
-		 	self.write(new_file = True)
 		self.add_dir()
 		self.write()
 
@@ -105,12 +102,9 @@ class EditTable(Table):
 			print('%s entries in %s already exist in %s'
 			%(len(self.repeats), self.input_dir, self.table_loc.split('/')[-1]) )
 
-	def write(self, new_file = False):
-		''' write to disk, if first time: write an empty table to file
+	def write(self):
+		''' write to disk
 		'''
-		if new_file:
-			print('Creating new table .json at %s' %(self.table_loc))
-			self.data = pd.DataFrame(columns = self.attributes)
 		self.data.to_json(self.table_loc)
 
 if __name__ == "__main__":
@@ -137,8 +131,8 @@ if __name__ == "__main__":
 			os.makedirs(args.meta_dir)
 
 		t = EditTable(mft = args.mft,
-		input_dir = args.dir,
-		table_loc = args.meta_dir + args.mft+'.json',
+		input_dir = os.path.join(args.dir, ''), # path.join( ,'') ensures path ends w/ '/'
+		table_loc = os.path.join(args.meta_dir, args.mft+'.json'),
 		bitdepth = args.bitdepth,
 		resolution = [args.x_resolution, args.y_resolution])
 		#t.erase('delete this file')
