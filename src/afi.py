@@ -40,6 +40,12 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
     ''' Given where to write, which spot it is writing for
         and ledger (so it can look up filenames), conjugates the filename
         then populates a .afi file, writing to dir
+        @param str dirpath: user input passed through traverse from GUI
+        @param str mask_dir: user input
+        @param str spot: within a dir, each afi corresponds to a spot, which
+        links a group of TIF
+        @param dic tif_ledeger: keys of this dic are spots, provides a list of filenames
+        which belong to this spot
     '''
     # read S[year num]_[5 digit serial]_Spot[spot num]
     filename = '%s_Spot%s.afi' %( case_name(dirpath),  int(spot))
@@ -47,10 +53,20 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
 
     if mask_dir:
         path_to_write = mask_dir
+
     else:
         path_to_write = dirpath
 
+    # next code block to sort channel names alphabetically, since S001-> DAPI1
+    # create channel names linked w/ tif_name, sort array,
+    channel_names_to_sort = []
+
     for tif_name in tif_ledger[spot]:
+        channel_names_to_sort.append( [channel_name(tif_name), tif_name] )
+    #print(channel_names_to_sort)
+    channel_names_to_sort.sort(key=lambda x: x[0])
+
+    for c_name, tif_name in channel_names_to_sort:
         image_child = ET.SubElement(root, "Image")
 
         path_child = ET.SubElement(
@@ -60,7 +76,7 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
         image_child, "BitDepth").text = "16"
 
         channelname_child = ET.SubElement(
-        image_child, "ChannelName").text = channel_name(tif_name)
+        image_child, "ChannelName").text = c_name
 
     tree = ET.ElementTree(root)
     #print(dirpath + filename)
@@ -70,7 +86,12 @@ def traverse(start_dir, mask_dir, num_stains):
     ''' traverses all subdir of start_dir, creates a tif_ledger if .tif found
         writes .afi for each spot found at dirpath to dirpath
         (e.g. PR_Spot4_1.afi, PR_Spot2_1.afi at D:\PR_1\AFRemoved\ )
+        @param str start_dir: GUI field 1, actual path leading to TIF files
+        @param None or str mask_dir: GUI field 2, path of another machine to embed into afi
+        @param None or str num_stains: GUI field 3, prints warning if spot does not contain this many files
+        @return dic tif_ledger: an empty tif_ledger indicates no TIF were found
     '''
+    tif_ledger = dict()
     for dirpath, dirs, files in os.walk(start_dir):
         dirpath = os.path.join(dirpath, '')
         tif_ledger = collect_spots(dirpath)
@@ -103,12 +124,17 @@ e1 = Entry(master, textvariable=1, width=80)
 e1.grid(row=0, column=1, pady = 20, padx = 10)
 
 def show_entry_fields():
+   ''' calls afi writing functions according to user input into GUI
+        e1 corresponds to first field, e2 to second field, so on.
+        traverse( ) takes all user inputs and executes the task, also serves as boolean
+        in case directory does not contain any .tif
+   '''
    path = os.path.join(e1.get(), '')
    if not path_exists(path):
        update_usr('Not a valid directory path')
        return
 
-   mask_dir = os.path.join(e2.get(), '')
+   mask_dir = e2.get() #os.path.join(e2.get(), '')
    print(mask_dir)
 
    num_stains = (e3.get())
@@ -144,7 +170,8 @@ update_usr('________Num of Stains________')
 
 update_usr(
 """.afi file displays this path to HALO, use directory mask if HALO is on another machine \n
-user must conclude path with '/' or '\\' depending on Operating System
+user must conclude path with '/' or '\\' depending on Operating System, \n
+the path also need to end with the folder containing the images.
 """
 )
 update_usr('________Directory Mask________')
