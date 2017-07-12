@@ -1,31 +1,21 @@
 import os
 import xml.etree.cElementTree as ET
+try:
+    from tkinter import *
+except ImportError:
+    from Tkinter import *
 
-from tkinter import *
-#import lxml.etree as etree
-
-
-
-#dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
-#tif_dir = os.path.join(dir, 'data/copyGE', '')
-# /home/lihan/Documents/image/data/mockGE2
-#print(tif_dir)
-
-def init_afi(dirpath, spot):
-    afi_name = 'PR_Spot%s_1.afi' %(spot)
-    afi_loc = os.path.join(dirpath, afi_name)
-    #if afi_loc.is_dir():
-    return
+#/home/lihan/Documents/image/data/S11_27456_1_1
+#D:\somefile\somefile2\file.tif
 
 def collect_spots(path):
     # collect filenames at this path by spot
     spot_dict = dict()
     all_files = next(os.walk(path))[2]
     for f in all_files:
-
         #GE format: MarkerName_blah_spot_SpotNum.tif
         #counting 4 '_' ensures this is a GE tif
-        if '.tif' in f and f.count('_') == 4:
+        if '.tif' in f and f.count('_') >= 4:
             #extract spot number from file name
             spot = f.split('.')[0].split('_')[-1]
             if spot in spot_dict.keys():
@@ -34,81 +24,144 @@ def collect_spots(path):
                 spot_dict[spot] = [f]
     return spot_dict
 
+def case_name(path):
+    parent_dir = path.split('/')[-2]
+    if '_' not in parent_dir:
+        return parent_dir
+    return parent_dir.split('_')[0] + '_' + parent_dir.split('_')[1]
 
-def link(start_dir):
+def channel_name(file_name):
+    cname = file_name.split('_')[0]
+    if 'dapi' in file_name:
+        return 'DAPI%s'%( int(cname[1:]) )
+    return cname
+
+def write_afi(dirpath, mask_dir, spot, tif_ledger):
+    ''' Given where to write, which spot it is writing for
+        and ledger (so it can look up filenames), conjugates the filename
+        then populates a .afi file, writing to dir
+    '''
+    # read S[year num]_[5 digit serial]_Spot[spot num]
+    filename = '%s_Spot%s.afi' %( case_name(dirpath),  int(spot))
+    root = ET.Element("ImageList")
+
+    if mask_dir:
+        path_to_write = mask_dir
+    else:
+        path_to_write = dirpath
+
+    for tif_name in tif_ledger[spot]:
+        image_child = ET.SubElement(root, "Image")
+
+        path_child = ET.SubElement(
+        image_child, "Path").text = str(path_to_write + tif_name)
+
+        bitdepth_child = ET.SubElement(
+        image_child, "BitDepth").text = "16"
+
+        channelname_child = ET.SubElement(
+        image_child, "ChannelName").text = channel_name(tif_name)
+
+    tree = ET.ElementTree(root)
+    #print(dirpath + filename)
+    tree.write(dirpath + filename)
+
+def traverse(start_dir, mask_dir, num_stains):
     ''' traverses all subdir of start_dir, creates a tif_ledger if .tif found
         writes .afi for each spot found at dirpath to dirpath
         (e.g. PR_Spot4_1.afi, PR_Spot2_1.afi at D:\PR_1\AFRemoved\ )
     '''
-    found_tif = False
-
     for dirpath, dirs, files in os.walk(start_dir):
         dirpath = os.path.join(dirpath, '')
         tif_ledger = collect_spots(dirpath)
-        #print(tif_ledger)
         for spot in tif_ledger.keys():
-            filename = 'PR_Spot%s_1.afi' %(int(spot))
-            #with open(, 'w') as write_to:
-
-            root = ET.Element("ImageList")
-
-            for tif_name in tif_ledger[spot]:
-
-                found_tif = True
-
-                image_child = ET.SubElement(root, "Image")
-                #PC_dir = "D:\PR_1\AFRemoved\filename.tif"
-                path_child = ET.SubElement(
-                image_child, "Path").text = str(dirpath + tif_name)
-
-                bitdepth_child = ET.SubElement(
-                image_child, "BitDepth").text = "16"
-
-                channelname_child = ET.SubElement(
-                image_child, "ChannelName").text = tif_name.split('_')[0]#"CD25"
-
-                # what is the HALO .afi name scheme?
-
-            tree = ET.ElementTree(root)
-            print(dirpath + filename)
-            tree.write(dirpath + filename)
-            tree = 0 #I have no idea how to clear tree and root vals from memory
-            root = 0
-    return found_tif
+                if num_stains and len(tif_ledger[spot]) != int(num_stains):
+                    update_usr('Spot %s at %s has %s .tif files, not expected' %(spot, dirpath, len(tif_ledger[spot])))
+                write_afi(dirpath, mask_dir, spot, tif_ledger)
+    return tif_ledger
 
 def path_exists(path):
-    #print(path)
     return os.path.exists(os.path.dirname(path))
+
+master = Tk()
+master.geometry('1000x500+300+300')
+master.title("HALO's TIFF Linker")
+
+top_label = Label(master, text="Root Directory \n to Traverse" )
+top_label.grid(row=0, padx = 20)
+top_label.config(font=('Helvetica',15))
+
+mid_label = Label(master, text="Directory Mask ")
+mid_label.grid(row=1, padx = 20)
+mid_label.config(font=('Helvetica',15))
+
+bot_label = Label(master, text="Number of stains \n used by study ")
+bot_label.grid(row=2, padx = 20)
+bot_label.config(font=('Courier',12))
+
+e1 = Entry(master, textvariable=1, width=80)
+e1.grid(row=0, column=1, pady = 20, padx = 10)
 
 def show_entry_fields():
    path = os.path.join(e1.get(), '')
-   print(path)
    if not path_exists(path):
-       status.set("Not a valid directory path")
+       update_usr('Not a valid directory path')
+       return
+
+   mask_dir = os.path.join(e2.get(), '')
+   print(mask_dir)
+
+   num_stains = (e3.get())
+   if num_stains and not num_stains.isdigit():
+       update_usr('Number of Stains not an integer')
        return
 
    # file written by link after calling it, link also a bool indicating if tiff found at path
-   if not link(path):
-       status.set('No .tif or .tiff found at this directory')
+   if not traverse(path, mask_dir, num_stains):
+       update_usr('No .tif or .tiff found anywhere in %s' %(path))
        return
-   status.set('%s written to %s' %('filename', path) )
+   update_usr('%s written to %s' %('filename', path) )
 
-master = Tk()
-master.geometry('900x100+300+300')
-master.title("HALO's TIFF Linker")
-Label(master, text="Root Directory \n to Traverse").grid(row=0)
+e2 = Entry(master, width = 80)
+e2.grid(row = 1, column = 1, pady = 20, padx = 10)
+
+e3 = Entry(master, width = 10)
+e3.grid(row = 2, column = 1)
+
+def update_usr(text = ''):
+    status.set( text + '\n\n' + status.get())
+
+Button(master, text='Link', command=show_entry_fields).grid(row=3, column=1, pady=20)
+Button(master, text='Quit', command=master.quit).grid(row=3, column=0, sticky=W, padx = 75, pady=20)
 
 status = StringVar()
-Label(master, textvariable=status).grid(column=1, row=1)
-status.set('TIFFs in directory are stacked by spots (spatial locations)')
+Label(master, textvariable=status).grid(row=4, column=1,pady = 0)
 
-e1 = Entry(master, textvariable=1, width=80)
-e1.pack(ipady=3)
-e1.insert(10,"")
+status.set("""
+Warnings are printed if .tif files for one spot do not contain \n designated number of stains (leave blank for no warning)""")
+update_usr('________Num of Stains________')
 
-e1.grid(row=0, column=1)
 
-Button(master, text='Quit', command=master.quit).grid(row=3, column=2, sticky=W, pady=0)
-Button(master, text='Stack', command=show_entry_fields).grid(row=3, column=1, sticky=W, pady=0)
+update_usr(
+""".afi file displays this path to HALO, use directory mask if HALO is on another machine \n
+user must conclude path with '/' or '\\' depending on Operating System
+"""
+)
+update_usr('________Directory Mask________')
+
+update_usr('''
+afi linking files are written to where linked TIFFs are \n
+In a directory, TIFFs belonging to the same spot are linked\n
+all subdirectories from the path provided are traversed and searched\n
+THIS PROGRAM WILL RE-WRITE EXISTING AFI IF THEY ARE FOUND W/ SAME NAMING SCHEME IN A SUBDIRECTORY
+''')
+
+update_usr('________General Notes________')
+# status2 = StringVar()
+# Label(master, textvariable=status2).grid(row=5, column=1, pady=20)
+# status2.set('1')
 
 mainloop( )
+
+# TODO
+# mask directory
