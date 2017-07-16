@@ -21,6 +21,9 @@ class MainApplication(Frame):
         self.queue = self.fill_queue(data)
         self.zoom_queue = self.fill_queue(zoom)
 
+        self.image_pointers = []
+
+
         ''' here we store user input
             knows: 0 if sample is unknwn, 1 if sample is knwn (default)
             labels: 0 if sample is not tumor (defaul), 1 if sample is tumor
@@ -41,8 +44,7 @@ class MainApplication(Frame):
         return filled_queue
 
     def place_sample(self, panel, side = LEFT):
-
-        print(self.queue_pos, len(self.queue))
+        #print(self.queue_pos, len(self.queue))
         im = Image.open(  self.queue[self.queue_pos] )
         im = im.resize((420+80, 240+26), Image.ANTIALIAS )
         tkimage = ImageTk.PhotoImage(im)
@@ -50,11 +52,14 @@ class MainApplication(Frame):
         imvar.image = tkimage
         imvar.pack(side = side)
 
+        self.image_pointers.append(imvar)
+
         input_panel = Frame(panel)
 
         t_var = IntVar()
         tumor= Checkbutton(
-        input_panel, text= 'tumor', variable = t_var, command = lambda: self.flick(
+        input_panel, text= 'tumor', variable = t_var, pady = 20, padx = 20,
+        command = lambda: self.flick(
         self.pos(t_var)))
         tumor.var = t_var
         tumor.pack(side = TOP )
@@ -69,7 +74,7 @@ class MainApplication(Frame):
 
         z_var = IntVar()
         zoom = Button(
-        input_panel, text='zoom/unzoom', command = lambda: self.flick(
+        input_panel, text='zoom', command = lambda: self.flick(
         self.pos(z_var, offset = 2) , image_var = imvar, array = 'zooms'))#, pady = 50, padx = 30)
         zoom.var = z_var
         zoom.pack(side = BOTTOM)
@@ -119,16 +124,26 @@ class MainApplication(Frame):
         imvar.image = tkimage
         imvar.pack(side = LEFT)
 
+    def update(self, next_page_range ):
+        blank = os.path.join(dir, 'data/util/golden_retriever.png')
+        for pointer in self.image_pointers:
+            self.update_img(pointer, blank)
+
+        while self.queue_pos < len(self.queue) and self.queue_pos < next_page_range:
+            for pointer in self.image_pointers:
+                self.update_img(pointer, self.queue[self.queue_pos] )
+                self.queue_pos += 1
+
+
+
     def populate( self, imgs_per_page = 9 ):
-        l = window.pack_slaves()
-        if l:
-            for item in l:
-                item.destroy()
 
         num_rows = imgs_per_page // 3
         left_overs = imgs_per_page % 3
-
-        while self.queue_pos < len(self.queue):
+        #page = 1
+        next_page_range = self.queue_pos + imgs_per_page
+        # stop if last image in directory, or out of display space
+        while self.queue_pos < len(self.queue) and self.queue_pos < next_page_range:
             self.place_row()
         ####################
 
@@ -136,7 +151,7 @@ class MainApplication(Frame):
 
         submit = Button(
         conclude_panel, text='submit', pady = 50, padx = 50,
-        command = lambda: self.update() )
+        command = lambda: self.update(next_page_range + imgs_per_page) )
         submit.pack(side = LEFT)
 
         quit = Button(conclude_panel, text='quit', pady = 50, padx = 50, command = window.quit)
