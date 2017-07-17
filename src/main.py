@@ -20,10 +20,6 @@ class MainApplication(Frame):
         self.queue_pos = 0
         self.queue = self.fill_queue(data)
         self.zoom_queue = self.fill_queue(zoom)
-
-        self.image_pointers = []
-
-
         ''' here we store user input
             knows: 0 if sample is unknwn, 1 if sample is knwn (default)
             labels: 0 if sample is not tumor (defaul), 1 if sample is tumor
@@ -33,6 +29,8 @@ class MainApplication(Frame):
         self.labels = [0 for x in self.queue ]
         self.zooms = [0 for x in self.queue ]
 
+        self.pg = 0
+        self.image_pointers = []
         self.populate()
 
     def fill_queue(self, path):
@@ -44,15 +42,14 @@ class MainApplication(Frame):
         return filled_queue
 
     def place_sample(self, panel, side = LEFT):
-        #print(self.queue_pos, len(self.queue))
-        im = Image.open(  self.queue[self.queue_pos] )
+
+        im = Image.open( self.queue[self.queue_pos] )
         im = im.resize((420+80, 240+26), Image.ANTIALIAS )
         tkimage = ImageTk.PhotoImage(im)
         imvar = Label(panel, image = tkimage)
-        imvar.image = tkimage
-        imvar.pack(side = side)
-
         self.image_pointers.append(imvar)
+        imvar.image = tkimage
+        imvar.pack(side = LEFT)
 
         input_panel = Frame(panel)
 
@@ -84,12 +81,11 @@ class MainApplication(Frame):
     def pos(self, var, offset = 0):
         var = str(var)
         var = ''.join(i for i in var if i.isdigit())
-        print(var)
-        return int( (int(var) - offset) /3)
+        return int( (int(var) - offset) /3) + (self.pg * 9)
 
     def flick(self, pos, image_var = '', array = 'labels'):
         edit_queue = eval('self.' + array)
-        print(pos, len(edit_queue))
+        #print(pos, len(edit_queue))
         if edit_queue[pos] == 0:
             edit_queue[pos] = 1
         else:
@@ -114,7 +110,7 @@ class MainApplication(Frame):
         if zoom:
             self.update_img( imvar, self.zoom_queue[0] )
         else:
-            self.update_img( imvar, self.queue[0] )
+            self.update_img( imvar, self.queue[pos] )
 
     def update_img(self, imvar, path):
         im = Image.open(path)
@@ -125,25 +121,28 @@ class MainApplication(Frame):
         imvar.pack(side = LEFT)
 
     def update(self, next_page_range ):
-        blank = os.path.join(dir, 'data/util/golden_retriever.png')
+        blank = os.path.join(dir, 'data/util/pixel.png')
         for pointer in self.image_pointers:
             self.update_img(pointer, blank)
 
-        while self.queue_pos < len(self.queue) and self.queue_pos < next_page_range:
+        self.pg += 1
+
+        while self.queue_pos != next_page_range:
             for pointer in self.image_pointers:
+                if self.queue_pos == len(self.queue):
+                    return
+                #print(self.queue_pos, next_page_range, self.queue_pos < len(self.queue) )
                 self.update_img(pointer, self.queue[self.queue_pos] )
                 self.queue_pos += 1
 
 
-
     def populate( self, imgs_per_page = 9 ):
-
-        num_rows = imgs_per_page // 3
-        left_overs = imgs_per_page % 3
-        #page = 1
-        next_page_range = self.queue_pos + imgs_per_page
+        #num_rows = imgs_per_page // 3
+        #left_overs = imgs_per_page % 3
+        #next_page_range = self.queue_pos + imgs_per_page
         # stop if last image in directory, or out of display space
-        while self.queue_pos < len(self.queue) and self.queue_pos < next_page_range:
+        #while self.queue_pos < len(self.queue) and self.queue_pos < next_page_range:
+        for i in range(3):
             self.place_row()
         ####################
 
@@ -151,7 +150,7 @@ class MainApplication(Frame):
 
         submit = Button(
         conclude_panel, text='submit', pady = 50, padx = 50,
-        command = lambda: self.update(next_page_range + imgs_per_page) )
+        command = lambda: self.update(self.queue_pos + imgs_per_page) )
         submit.pack(side = LEFT)
 
         quit = Button(conclude_panel, text='quit', pady = 50, padx = 50, command = window.quit)
@@ -163,7 +162,7 @@ if __name__== "__main__":
 
     window = Tk()
     window.geometry('2000x1000+0+0')
-    window.title("Tumor-or-Not v1.0")
+    window.title("Tumor Classification UI v0.0")
 
     MainApplication(window).pack(side='top', fill = 'both', expand = True)
 
