@@ -5,12 +5,10 @@ try:
 except ImportError:
     from Tkinter import *
 from PIL import ImageTk, Image
-from tifffile import TiffFile, imsave, imread
-import itertools
 
 dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
-data = os.path.join(dir, 'data/display/')
-zoom = os.path.join(dir, 'data/zoom/')
+data = os.path.join(dir, 'data/sox10_boundary/')
+zoom = os.path.join(dir, 'data/sox10_boundary_zoom/')
 
 class MainApplication(Frame):
     def __init__(self, parent, *args, **kwargs):
@@ -23,6 +21,8 @@ class MainApplication(Frame):
         self.zoom_queue = []
         self.fill_queues()
 
+        self.queue = self.queue[:100]
+        self.zoom_queue = self.zoom_queue[:100]
         ''' here we store user input
             knows: 0 if sample is unknwn, 1 if sample is knwn (default)
             labels: 0 if sample is not tumor (defaul), 1 if sample is tumor
@@ -32,16 +32,17 @@ class MainApplication(Frame):
         self.labels = [0 for x in self.queue ]
         self.zooms = [0 for x in self.queue ]
 
-        self.image_dim = [500, 250]
+        self.image_dim = [435, 335] # optimal display dim: [w = 1.3h, h]
         self.pg = 0
         self.last_pg = ''
+        # points to UI elements to set images/ checks
         self.label_check_pointers = []
         self.know_check_pointers = []
         self.image_pointers = []
+        self.caption_pointers = []
 
         self.label_storage_path = os.getcwd() + '/' + 'labels.txt'
         self.populate()
-
         self.import_labels()
 
     def fill_queues(self, path = data, zoom_path = zoom):
@@ -52,7 +53,7 @@ class MainApplication(Frame):
                     self.zoom_queue.append(zoom_path + f )
 
     def place_sample(self, panel, side = LEFT):
-        im = Image.open( self.queue[self.queue_pos] )
+        im = Image.open( self.zoom_queue[self.queue_pos] )
         im = im.resize((self.image_dim[0], self.image_dim[1]), Image.ANTIALIAS )
         tkimage = ImageTk.PhotoImage(im)
         imvar = Label(panel, image = tkimage)
@@ -64,7 +65,7 @@ class MainApplication(Frame):
 
         t_var = IntVar()
         tumor= Checkbutton(
-        input_panel, text= 'tumor', variable = t_var, pady = 20, padx = 20,
+        input_panel, text= 'tumor', variable = t_var, pady = 20, padx = 0,
         command = lambda: self.check_write(
         tumor))
         tumor.var = t_var
@@ -73,7 +74,7 @@ class MainApplication(Frame):
 
         u_var = IntVar()
         unknown= Checkbutton(
-        input_panel, text= 'unkwn', variable = u_var, pady = 20, padx = 20,
+        input_panel, text= 'unkwn', variable = u_var, pady = 20, padx = 0,
         onvalue = 0, offvalue = 1,
         command = lambda: self.check_write(unknown , array='knows'))
         unknown.var = u_var
@@ -81,8 +82,9 @@ class MainApplication(Frame):
         unknown.pack(side = TOP )
         self.know_check_pointers.append(unknown)
 
-        caption = Label(input_panel, pady=20, text= 'spot ' + self.queue[self.queue_pos].split('/')[-1].split('_')[0] )
+        caption = Label(input_panel, pady=20, text= self.queue[self.queue_pos].split('/')[-1].split('_')[0] )
         caption.pack(side = BOTTOM)
+        self.caption_pointers.append(caption)
 
         z_var = IntVar()
         zoom = Button(
@@ -94,8 +96,8 @@ class MainApplication(Frame):
 
         input_panel.pack(side = side)
 
-    def place_row(self):
-        sample_panel = Frame(window)
+    def place_row(self, gallery_panel):
+        sample_panel = Frame(gallery_panel)
 
         if self.queue_pos < len(self.queue):
             self.place_sample(sample_panel)
@@ -160,9 +162,9 @@ class MainApplication(Frame):
 
     def zoom_func(self, imvar, pos, zoom = 0):
         if zoom:
-            self.update_img( imvar, self.zoom_queue[pos] )
-        else:
             self.update_img( imvar, self.queue[pos] )
+        else:
+            self.update_img( imvar, self.zoom_queue[pos] )
 
     def update_img(self, imvar, path):
         im = Image.open(path)
@@ -171,6 +173,10 @@ class MainApplication(Frame):
         imvar.configure(image = tkimage)
         imvar.image = tkimage
         imvar.pack(side = LEFT)
+
+    def update_cap(self, cap, filepath):
+        cell_id = filepath.split('/')[-1].split('_')[0]
+        cap.config(text = cell_id)
 
     def update(self, prev = False ):
         """ Loads new page. Verifies page turning is possible, unchecks boxes,
@@ -197,41 +203,44 @@ class MainApplication(Frame):
                     self.last_pg = self.pg
                     img_up_next = blank
                 else:
-                    img_up_next = self.queue[self.queue_pos]
+                    img_up_next = self.zoom_queue[self.queue_pos]
                 self.update_img(pointer, img_up_next )
                 self.read_check(pos = self.queue_pos, checkbutton = ''  )
+                self.update_cap(self.caption_pointers[self.queue_pos % 9], img_up_next)
                 #print(self.queue_pos % 9, len(self.labels), self.queue_pos, self.labels[self.queue_pos])
                 self.queue_pos += 1
 
     def populate( self, imgs_per_page = 9 ):
+        gallery_panel = Frame(window)
         for i in range(3):
-            self.place_row()
+            self.place_row(gallery_panel)
+        gallery_panel.pack(side = LEFT)
 
         conclude_panel = Frame(window)
         prev_ = Button(
         conclude_panel, text='prev', pady = 50, padx = 50,
         command = lambda: self.update( prev = True))
-        prev_.pack(side = LEFT)
+        prev_.pack(side = TOP)
 
         next_ = Button(
         conclude_panel, text='next', pady = 50, padx = 50,
         command = lambda: self.update() )
-        next_.pack(side = LEFT)
+        next_.pack(side = TOP)
 
         submit = Button(
-        conclude_panel, text='submit', pady = 50, padx = 40,
+        conclude_panel, text='submit', pady = 50, padx = 43,
         command = lambda: self.export_labels() )
-        submit.pack(side = LEFT)
+        submit.pack(side = TOP)
 
         instr = Label(conclude_panel, pady = 50,
-        text = 'press submit to save \n labels stored at \n %s' %(self.label_storage_path))
-        instr.pack(side = RIGHT)
+        text = 'check unknwn only due to image quality\n press submit to save progress \n labels stored at \n %s' %(self.label_storage_path))
+        instr.pack(side = BOTTOM)
 
-        quit = Button(conclude_panel, text='quit', pady = 50, padx = 40,
+        quit = Button(conclude_panel, text='quit', pady = 50, padx = 50,
         command = window.quit)
-        quit.pack(side= RIGHT)
+        quit.pack(side= BOTTOM)
 
-        conclude_panel.pack(side=TOP, pady = 20)
+        conclude_panel.pack(side=RIGHT)#, pady = 20)
 
     def export_labels(self):
         label_dict = dict()
