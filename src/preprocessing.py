@@ -26,9 +26,10 @@ def colorized(file_paths, output_path):
         multiple greyscale into a (8int, 8int, 8int) RGB additive format
     '''
     matrix_stack = []
-
+    img_name = ''
     for path in file_paths:
         matrix_stack.append( np.array(Image.open(path)) )
+        img_name += path.split('/')[-1].split('_')[0] + '_'
 
     weights = [256-200, 256-175, 256+50]
     RGB = np.zeros((matrix_stack[0].shape[0], matrix_stack[0].shape[1], 3), "uint8")
@@ -38,8 +39,10 @@ def colorized(file_paths, output_path):
 
     img = Image.fromarray(RGB)
     img.resize((7082,4424), Image.ANTIALIAS)
-    img_name = file_paths[0].split('.')[0].split('/')[-1]
+
+    #marker_name = file_paths[0].split('/')[-1].split('_')[0]
     img.save( os.path.join(output_path, img_name +'.png'), 'PNG' )
+    return img_name + '.png'
 
 def center(box):
     c_x = (box[2] + box[0])/2
@@ -56,8 +59,9 @@ def box(center, rect_h = 500):
 
 def draw_box(
 input_directory, #= colored + 'SOX10_AFRemoved_pyr16_spot_005.png',
-output_directory, zoomed_output_directory, nobox_output_directory, metadata
+output_directory, zoomed_output_directory, metadata
 ):
+    #print(output_directory)
     count = 0
     for i, row in metadata.iterrows():
         im = Image.open(input_directory)
@@ -77,25 +81,25 @@ output_directory, zoomed_output_directory, nobox_output_directory, metadata
             save_name = '%s_cd4_%s|%.1f_sox10_%s|%.1f.png' %(
             cell_id, cd4_pos, cd4_intensity, sox10_pos, sox10_intensity)
 
-            nobox = im.crop( ( box(c, rect_h = 250)  ) )
-            nobox = nobox.resize((435,335), Image.ANTIALIAS)
-            nobox.save(nobox_output_directory + save_name, 'PNG')
+            # nobox = im.crop( ( box(c, rect_h = 250)  ) )
+            # nobox = nobox.resize((435,335), Image.ANTIALIAS)
+            # nobox.save(nobox_output_directory + save_name, 'PNG')
 
             draw.rectangle([xmin - 10, ymin - 10, xmax + 10, ymax + 10], outline = 'red')
 
             big_img = im.crop( ( box(c) ) )
-            big_img.save(output_directory + save_name, 'PNG')
+            big_img.save(output_directory + '/' + save_name, 'PNG')
 
             small_img = im.crop( ( box(c, rect_h = 250)  ) )
             small_img = small_img.resize((435,335), Image.ANTIALIAS)
-            small_img.save(zoomed_output_directory + save_name, 'PNG')
+            small_img.save(zoomed_output_directory +'/'+ save_name, 'PNG')
 
             del draw
 
             if count % 100 == 0:
                 print( 'percentage of samples generated: ', count/metadata.shape[0] )
 
-def gen_samples(dir_lookup, metadata, rgb_order = ['SOX10', 'CD4', 'S001']):
+def gen_samples(dir_lookup, metadata, rgb_orders = [['SOX10', 'CD4', 'S001']]):
     take_first_image( input_directory = dir_lookup['real_original'], output_directory = dir_lookup['original'] )
 
     #combine three protein markers of the entire view
@@ -104,19 +108,23 @@ def gen_samples(dir_lookup, metadata, rgb_order = ['SOX10', 'CD4', 'S001']):
         for f in files:
             file_paths.append( os.path.join( dir_lookup['original'], f) )
 
+    i = 1
     # sort and select paths found in rgb_order list
-    file_paths = [ f for i in range(3) for f in file_paths if rgb_order[i] in f ]
-    colorized( file_paths, output_path = dir_lookup['colored'] )
-    print('colorized!')
+    for order in rgb_orders:
 
-    draw_box(input_directory = dir_lookup['colored'] + 'SOX10_AFRemoved_pyr16_spot_005.png',
-    output_directory = dir_lookup['cropped'],
-    zoomed_output_directory = dir_lookup['zoomed'],
-    nobox_output_directory = dir_lookup['samples_nobox'], metadata = metadata)
+        marker_subset = [ f for i in range(3) for f in file_paths if order[i] in f ]
+        colored_file_name = colorized( marker_subset, output_path = dir_lookup['colored'] )
+        print('%s colorized' %(colored_file_name))
 
-def make_dir_dictionary(real_original_loc):
+        draw_box(input_directory = dir_lookup['colored'] + colored_file_name,
+        output_directory = dir_lookup['cropped'] + '_'.join(order),
+        zoomed_output_directory = dir_lookup['zoomed'] + '_'.join(order), metadata = metadata)
+
+        i += 1
+
+def make_dir_dictionary(rgb_orders, real_original_loc):
     dir_lookup =  { 'real_original':str(real_original_loc), 'original':'', 'colored':'',
-    'cropped' : '', 'samples_nobox': '', 'zoomed': ''  }
+    'cropped' : '', 'zoomed': ''  }
     dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
     if not os.path.exists(dir):
         os.makedirs(dir)
@@ -127,38 +135,26 @@ def make_dir_dictionary(real_original_loc):
 
         new_path = os.path.join(dir, dir_name + '/')
         if not os.path.exists(new_path):
-            os.makedirs(new_path)
+            os.makedirs(new_path, exist_ok = True)
             print('%s not found, creating it' %(new_path))
+
+        if dir_name == 'cropped' or dir_name == 'zoomed':
+            for order in rgb_orders:
+                os.makedirs(new_path+ '/' + '_'.join(order), exist_ok = True )
+
         dir_lookup[dir_name] = new_path
 
     return dir_lookup
 
 if __name__ == '__main__':
 
-    dir_lookup = make_dir_dictionary('/home/lihan/Documents/image/data/real_original/')
+    rgb_orders = [['SOX10', 'CD4', 'S001'], [ 'MELANA', 'CD8', 'S001'], ['LCA', 'CD3','S001']]
+    dir_lookup = make_dir_dictionary(rgb_orders, '/home/lihan/Documents/image/data/real_original/')
 
     spot5 = pd.read_csv('spot5.csv')
     modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] < 11.2) & (spot5['Marker 8 Intensity'] > 9.1)]
 
-    gen_samples(dir_lookup, metadata = modified_spot5)#'SOX10_AFRemoved_pyr16_spot_005.png')
-
-# def yield_rgb_triplet(input_directory = cropped):
-#     all_file_names = []
-#     for subdir, dirs, files in os.walk(input_directory):
-#         for f in files:
-#             all_file_names.append(f)
-#
-#     while all_file_names:
-#         key = '_'.join( all_file_names[0].split('_')[2:] )
-#         triplet = [ f for f in all_file_names if key in f ]
-#         rgb_order = ['SOX10', 'CD4', 'S001']
-#         rgb_triplet = [ f for i in range(3) for f in triplet if rgb_order[i] in f ]
-#
-#         all_file_names = [f for f in all_file_names if f not in rgb_triplet]
-#         yield rgb_triplet
-
-# for t in yield_rgb_triplet():
-#     colorized( [cropped + t[0], cropped + t[1], cropped + t[2]] )
+    gen_samples(dir_lookup, rgb_orders = rgb_orders, metadata = modified_spot5)#'SOX10_AFRemoved_pyr16_spot_005.png')
 
 ''' \\ -x, -y
     (x1, y1) --------

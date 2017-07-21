@@ -6,31 +6,31 @@ except ImportError:
     from Tkinter import *
 from PIL import ImageTk, Image
 
-dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
-data = os.path.join(dir, 'data/sox10_boundary/')
-zoom = os.path.join(dir, 'data/sox10_boundary_zoom/')
+def get_subdir(a_dir):
+    return [name for name in os.listdir(a_dir)
+        if os.path.isdir(os.path.join(a_dir, name))]
+
 
 class MainApplication(Frame):
     def __init__(self, parent, *args, **kwargs):
         Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
-
+        self.color_order = 0
         self.queue_pos = 0
         self.last_visited = 0
-        self.queue = []
-        self.zoom_queue = []
+
         self.fill_queues()
 
-        self.queue = self.queue[:100]
-        self.zoom_queue = self.zoom_queue[:100]
+        #self.queue = self.queue[:100]
+        #self.zoom_queue = self.zoom_queue[:100]
         ''' here we store user input
             knows: 0 if sample is unknwn, 1 if sample is knwn (default)
             labels: 0 if sample is not tumor (defaul), 1 if sample is tumor
             zooms: 0 if not zoomed (default), 1 if zoomed
         '''
-        self.knows = [1 for x in self.queue]
-        self.labels = [0 for x in self.queue ]
-        self.zooms = [0 for x in self.queue ]
+        self.knows = [1 for x in self.queues[0]]
+        self.labels = [0 for x in self.queues[0] ]
+        self.zooms = [1 for x in self.queues[0] ]
 
         self.image_dim = [435, 335] # optimal display dim: [w = 1.3h, h]
         self.pg = 0
@@ -45,15 +45,26 @@ class MainApplication(Frame):
         self.populate()
         self.import_labels()
 
-    def fill_queues(self, path = data, zoom_path = zoom):
-        for dirpath, dirs, files in os.walk(path):
-            for f in files:
-                if '.png' in f:
-                    self.queue.append(path +f)
-                    self.zoom_queue.append(zoom_path + f )
+    def fill_queues(self):#, path = zoom, zoom_path = zoom):
+        self.queues = [[],[],[]]
+        self.zoom_queues = [[],[],[]]
+        color_orders = get_subdir(zoomed)
+        for c in range(len(color_orders )):
+            order_subdir = cropped + color_orders[c]
+            #print(order_subdir)
+            zoomed_order_subdir = zoomed + color_orders[c]
+            for dirpath, dirs, files in os.walk( order_subdir ):
+                i = 0
+                for f in files:
+                    i += 1
+                    if '.png' in f and i < 100:
+                        #print(order_subdir + '/' +  f)
+                        self.queues[c].append(order_subdir + '/' +  f)
+                        self.zoom_queues[c].append(zoomed_order_subdir + '/' + f )
 
     def place_sample(self, panel, side = LEFT):
-        im = Image.open( self.zoom_queue[self.queue_pos] )
+        #print(self.zoom_queues[0][self.queue_pos])
+        im = Image.open( self.zoom_queues[0][self.queue_pos] )
         im = im.resize((self.image_dim[0], self.image_dim[1]), Image.ANTIALIAS )
         tkimage = ImageTk.PhotoImage(im)
         imvar = Label(panel, image = tkimage)
@@ -82,7 +93,7 @@ class MainApplication(Frame):
         unknown.pack(side = TOP )
         self.know_check_pointers.append(unknown)
 
-        caption = Label(input_panel, pady=20, text= self.queue[self.queue_pos].split('/')[-1].split('_')[0] )
+        caption = Label(input_panel, pady=20, text= self.queues[0][self.queue_pos].split('/')[-1].split('_')[0] )
         caption.pack(side = BOTTOM)
         self.caption_pointers.append(caption)
 
@@ -99,10 +110,10 @@ class MainApplication(Frame):
     def place_row(self, gallery_panel):
         sample_panel = Frame(gallery_panel)
 
-        if self.queue_pos < len(self.queue):
+        if self.queue_pos < len(self.queues[0]):
             self.place_sample(sample_panel)
             self.queue_pos += 1
-            while self.queue_pos % 3 != 0 and self.queue_pos < len(self.queue):
+            while self.queue_pos % 3 != 0 and self.queue_pos < len(self.queues[0]):
                 self.place_sample( sample_panel)
                 self.queue_pos += 1
 
@@ -134,7 +145,7 @@ class MainApplication(Frame):
         else:
             checkbutton = self.label_check_pointers[pos % 9]
             knows_checkbutton = self.know_check_pointers[pos % 9]
-        if pos < len(self.queue):
+        if pos < len(self.queues[0]):
             # if unknwn button checked from prev page, check it now
             if self.knows[pos] == 0:
                 knows_checkbutton.select()
@@ -161,10 +172,11 @@ class MainApplication(Frame):
         #print(array, edit_queue, pos)
 
     def zoom_func(self, imvar, pos, zoom = 0):
+        print(zoom)
         if zoom:
-            self.update_img( imvar, self.queue[pos] )
+            self.update_img( imvar, self.zoom_queues[self.color_order][pos] )
         else:
-            self.update_img( imvar, self.zoom_queue[pos] )
+            self.update_img( imvar, self.queues[self.color_order][pos] )
 
     def update_img(self, imvar, path):
         im = Image.open(path)
@@ -178,7 +190,7 @@ class MainApplication(Frame):
         cell_id = filepath.split('/')[-1].split('_')[0]
         cap.config(text = cell_id)
 
-    def update(self, prev = False ):
+    def update(self, next = False, prev = False ):
         """ Loads new page. Verifies page turning is possible, unchecks boxes,
             loads next image in the slot or a blank
             :param prev: bit to determine if next page or prev page, sets appropriate
@@ -189,26 +201,34 @@ class MainApplication(Frame):
                 return
             self.pg -= 1
 
-        else:
+        elif next:
             if self.last_pg == self.pg:
                 return
             self.pg += 1
+
         self.uncheck_all()
         blank = os.path.join(dir, 'data/util/pixel.png')
 
         self.queue_pos = self.pg * 9
         while self.queue_pos != (self.pg + 1) * 9:
             for pointer in self.image_pointers:
-                if self.queue_pos >= len(self.queue):
+                if self.queue_pos >= len(self.queues[0]):
                     self.last_pg = self.pg
                     img_up_next = blank
                 else:
-                    img_up_next = self.zoom_queue[self.queue_pos]
+                    img_up_next = self.zoom_queues[self.color_order][self.queue_pos]
                 self.update_img(pointer, img_up_next )
                 self.read_check(pos = self.queue_pos, checkbutton = ''  )
                 self.update_cap(self.caption_pointers[self.queue_pos % 9], img_up_next)
                 #print(self.queue_pos % 9, len(self.labels), self.queue_pos, self.labels[self.queue_pos])
                 self.queue_pos += 1
+
+    def toggle_color(self, button):
+        self.color_order = (self.color_order + 1) % 3
+        cur_color = get_subdir(zoomed)[self.color_order]
+        cur_color =  '\n'.join(cur_color.split('_'))
+        button.config(text = cur_color)
+        self.update()
 
     def populate( self, imgs_per_page = 9 ):
         gallery_panel = Frame(window)
@@ -217,6 +237,12 @@ class MainApplication(Frame):
         gallery_panel.pack(side = LEFT)
 
         conclude_panel = Frame(window)
+
+        toggle_ = Button(
+        conclude_panel, text='change \n color \n scheme', pady = 50, padx = 45,
+        command = lambda: self.toggle_color( toggle_ ))
+        toggle_.pack(side = TOP)
+
         prev_ = Button(
         conclude_panel, text='prev', pady = 50, padx = 50,
         command = lambda: self.update( prev = True))
@@ -224,7 +250,7 @@ class MainApplication(Frame):
 
         next_ = Button(
         conclude_panel, text='next', pady = 50, padx = 50,
-        command = lambda: self.update() )
+        command = lambda: self.update( next = True) )
         next_.pack(side = TOP)
 
         submit = Button(
@@ -246,7 +272,7 @@ class MainApplication(Frame):
         label_dict = dict()
         self.labels = [x if x != 0 else x - 1 for x in self.labels ]
         for i in range(self.last_visited+1):
-            label_dict[ self.queue[i] ] = self.labels[i] * self.knows[i]
+            label_dict[ self.queues[0][i] ] = self.labels[i] * self.knows[i]
         with open(self.label_storage_path, 'w') as f:
             f.write( str(label_dict) )
 
@@ -258,18 +284,22 @@ class MainApplication(Frame):
         with open(self.label_storage_path, 'r') as f:
             label_dict = eval(f.read())
 
-        for i in range(len(self.queue)):
-            if self.queue[i] in label_dict.keys():
+        for i in range(len(self.queues[0])):
+            if self.queues[0][i] in label_dict.keys():
                 #print('pos at _ have value _ ', i, label_dict[self.queue[i]])
-                if label_dict[self.queue[i]] == 0:
+                if label_dict[self.queues[0][i]] == 0:
                     self.knows[i] = 0
-                if label_dict[self.queue[i]] == 1:
+                if label_dict[self.queues[0][i]] == 1:
                     self.labels[i] = 1
-                if label_dict[self.queue[i]] == -1:
+                if label_dict[self.queues[0][i]] == -1:
                     self.labels[i] = 0
                 if i < 9:
                     self.read_check(pos = i)
 if __name__== "__main__":
+
+    dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
+    cropped = os.path.join(dir, 'data/cropped/')
+    zoomed = os.path.join(dir, 'data/zoomed/')
 
     window = Tk()
     window.geometry('2000x1000+0+0')
