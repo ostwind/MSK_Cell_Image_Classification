@@ -152,7 +152,8 @@ if __name__ == '__main__':
     dir_lookup = make_dir_dictionary(rgb_orders, '/home/lihan/Documents/image/data/real_original/')
 
     spot5 = pd.read_csv('spot5.csv')
-    modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] < 11.2) & (spot5['Marker 8 Intensity'] > 9.1)]
+    modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] < 11.8) & (spot5['Marker 8 Intensity'] > 9.1)]
+    # intensity range leads to 892 label 1 samples, 880 label 0 samples
 
     gen_samples(dir_lookup, rgb_orders = rgb_orders, metadata = modified_spot5)#'SOX10_AFRemoved_pyr16_spot_005.png')
 
