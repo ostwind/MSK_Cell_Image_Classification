@@ -55,7 +55,7 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
         path_to_write = mask_dir
 
     else:
-        path_to_write = dirpath
+        path_to_write = ''
 
     # next code block to sort channel names alphabetically, since S001-> DAPI1
     # create channel names linked w/ tif_name, sort array,
@@ -70,7 +70,7 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
         image_child = ET.SubElement(root, "Image")
 
         path_child = ET.SubElement(
-        image_child, "Path").text = str(path_to_write + tif_name)
+        image_child, "Path").text = str(tif_name)
 
         bitdepth_child = ET.SubElement(
         image_child, "BitDepth").text = "16"
