@@ -12,6 +12,7 @@ import numpy as np
 import os
 from sample_gen import dataload, show
 import tensorflow as tf
+from functools import partial
 
 dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
 tensor_path = os.path.join(dir, 'tensors/')
@@ -43,6 +44,9 @@ n_outputs = 2
 
 reset_graph()
 
+batch_norm_layer = partial(tf.layers.batch_normalization, training=training,
+momentum=batch_norm_momentum)
+
 with tf.name_scope("inputs"):
     X = tf.placeholder(tf.float32, shape=[None, height, width, channels], name="X")
     print(X.get_shape())
@@ -51,17 +55,18 @@ with tf.name_scope("inputs"):
     y = tf.placeholder(tf.int32, shape=[None], name="y")
 
 conv1 = tf.layers.conv2d(X_reshaped, filters=conv1_fmaps, kernel_size=conv1_ksize,
-                         strides=conv1_stride, padding=conv1_pad,
-                         activation=tf.nn.relu, name="conv1")
+                         strides=conv1_stride, padding=conv1_pad, name="conv1")
 print('conv1: ', conv1.get_shape())
+bn1 = tf.nn.elu(batch_norm_layer(conv1))
 
-conv2 = tf.layers.conv2d(conv1, filters=conv2_fmaps, kernel_size=conv2_ksize,
-                         strides=conv2_stride, padding=conv2_pad,
-                         activation=tf.nn.relu, name="conv2")
+conv2 = tf.layers.conv2d(bn1, filters=conv2_fmaps, kernel_size=conv2_ksize,
+                         strides=conv2_stride, padding=conv2_pad, name="conv2")
 print('conv2: ', conv2.get_shape())
+bn2 = tf.nn.elu(batch_norm_layer(conv2))
+
 
 with tf.name_scope("pool3"):
-    pool3 = tf.nn.max_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="VALID")
+    pool3 = tf.nn.max_pool(bn2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="VALID")
     print('pool3: ', pool3.get_shape())
     pool3_flat = tf.reshape(pool3, shape=[-1, pool3_fmaps * 25 * 25])
 
@@ -70,7 +75,8 @@ with tf.name_scope("fc1"):
     print('fc1: ', fc1.get_shape())
 
 with tf.name_scope("output"):
-    logits = tf.layers.dense(fc1, n_outputs, name="output")
+    logits_before_bn = tf.layers.dense(fc1, n_outputs, name="output")
+    logits = batch_norm_layer(logits_before_bn)
     print('logits: ', logits.get_shape())
     Y_proba = tf.nn.softmax(logits, name="Y_proba")
     #print(Y_proba.get_shape())
@@ -89,7 +95,7 @@ with tf.name_scope("init_and_save"):
     init = tf.global_variables_initializer()
     saver = tf.train.Saver()
 
-n_epochs = 4
+n_epochs = 10
 test_path = os.path.join(dir, 'test_set/')
 
 def test():
@@ -103,14 +109,14 @@ def test():
             for i in range(len(y_test)):
                 true.append( y_test[i])
                 preds.append( np.argmax(Z[i], axis = 0) )
-                print( Z[i], y_test[i] )
+            print( Z[:10], y_test[:10] )
     print( len(preds),
     1- ((np.abs( np.array(preds) - np.array(true) ).sum())/len(preds)) )
 
 def train():
     with tf.Session() as sess:
         init.run()
-        saver.restore(sess, './my_mnist_model')
+        #saver.restore(sess, './my_mnist_model')
         for epoch in range(n_epochs):
             i = 0
             for X_batch, y_batch in dataload(tensor_path):

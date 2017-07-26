@@ -46,14 +46,7 @@ def tensor(r):
             cell_matrix = (np.array(cell_im))/255
             #print(cell_matrix)
             tensor.append(cell_matrix)
-            #cell_im = Image.fromarray(cell_matrix)
-            #cell_im.show()
-            #if 'SOX10' in f:
-            #    print(len(tensor))
-
-    #print(tensor[10].dtype)
-    tensor = np.array(tensor).astype(np.uint8).transpose() #shape = (100, 100, 23)
-    #tensor = tf.image.per_image_standardization(tensor) # turns into tf tensor
+    tensor = np.array(tensor).astype(np.uint8).transpose()
     #tensor = normalize(tensor)
     return tensor # WOW
 
@@ -62,13 +55,13 @@ def load(read_from_path = ''):
     if read_from_path:
         return np.load(read_from_path)
 
-def rotate(tensor):
+def rotate(tensor): # dont rotate if there are enough samples
     if type(tensor) == str:
         return 'bad dim'
 
     rotations = [tensor]
-    for i in range(3):
-        rotations.append(np.rot90( rotations[-1], axes = (0,1)))
+    #for i in range(3):
+    #    rotations.append(np.rot90( rotations[-1], axes = (0,1)))
     return rotations
 
 def save(region, cell_id, label, output_dir ):
@@ -87,7 +80,7 @@ def save(region, cell_id, label, output_dir ):
         t.dump(output_dir + '%s_%s_%s.dat' %(cell_id, label, i))
         i += 1
 
-def gen_tensors(input_directory, output_directory, test_directory, metadata):
+def gen_tensors(spot, input_directory, output_directory, test_directory, metadata):
     i = 0
     s = np.random.uniform(0, 1, len(metadata.index))
     for i, row in metadata.iterrows():
@@ -105,14 +98,13 @@ def gen_tensors(input_directory, output_directory, test_directory, metadata):
         if s[i] < 0.3: # train/test split at 70/30
             path_to_write = test_directory
 
-        save( [xmin, ymin, xmax, ymax], cell_id, sox10_pos, path_to_write)
+        # note that spot is encoded as first digit of cell id
+        save( [xmin, ymin, xmax, ymax], str(spot) + cell_id, sox10_pos, path_to_write)
         i += 1
         if i % 2000 == 0:
             print(i)
 
 def dataload(input_directory):
-    tensor_batch = []
-    label_batch = []
     cache = []
     j = 0
     i = 0
@@ -120,7 +112,6 @@ def dataload(input_directory):
         for f in files:
             if '.dat' in f:
                 tf_tensor = ( load(read_from_path = input_directory + f) )
-
                 cache.append( (tf_tensor, np.array( [ int(f.split('_')[1]) ] ) ) )
                 i += 1
                 if i == 2000:
@@ -133,7 +124,6 @@ def dataload(input_directory):
                         tensor_batch, label_batch = zip(*next_batch)
                         label_batch = np.concatenate(label_batch, axis = 0)
                         yield tensor_batch, label_batch
-                    #print(next_sample)
                     j += 1
 
 def empty_dir(path):
@@ -143,25 +133,22 @@ def empty_dir(path):
 
 if __name__ == '__main__':
     dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
-    original_imgs_path = os.path.join(dir, 'original/')
+    original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
     tensor_path = os.path.join(dir, 'tensors/')
     test_path = os.path.join(dir, 'test_set/')
     empty_dir(tensor_path)
     empty_dir(test_path)
 
-    spot5 = pd.read_csv('spot5.csv')
-    modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] < 12) & (spot5['Marker 8 Intensity'] > 8)]
-    #modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] > 12) & (spot5['Marker 8 Intensity'] < 8)]
+    # generate spotX.csv from /data/cell_metadata.csv
 
-    gen_tensors(original_imgs_path, tensor_path, test_path, spot5)#modified_spot5)
+    for i in [2, 3, 4, 5]:
+        spot = pd.read_csv('spot%s.csv' %(i))
+        modified_spot5 = spot.loc[(spot['Marker 8 Intensity'] < 12) & (spot['Marker 8 Intensity'] > 8)]
+        #modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] > 12) & (spot5['Marker 8 Intensity'] < 8)]
 
-def show(matrices):
-    print(matrices.shape)
-    layers = [5, 10, 17]
-    RGB = matrices[:,:,layers]
-    im = Image.fromarray(RGB)
-    print(RGB, RGB.shape)
-    im.save('lol.png', 'PNG')
+        #print(spot5['Marker 8 Positive'].value_counts())
+
+        gen_tensors(i, original_imgs_path, tensor_path, test_path, spot)#modified_spot5)
 
 def normalize(arr):
     """

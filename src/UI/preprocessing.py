@@ -16,7 +16,7 @@ def take_first_image(input_directory, output_directory):
             if '.tif' in f:
                 with TiffFile(str(input_directory) + f) as tif:
                     matrix = tif[0].asarray()
-                    im = Image.fromarray(matrix)#.astype(numpy.uint8)
+                    im = Image.fromarray(matrix)
                     im.save(output_directory + f)
                     im.close()
 
@@ -151,11 +151,13 @@ if __name__ == '__main__':
     rgb_orders = [['SOX10', 'CD4', 'S001'], [ 'MELANA', 'CD8', 'S001'], ['LCA', 'CD3','S001']]
     dir_lookup = make_dir_dictionary(rgb_orders, '/home/lihan/Documents/image/data/real_original/')
 
-    spot5 = pd.read_csv('spot5.csv')
-    modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] < 11.8) & (spot5['Marker 8 Intensity'] > 9.1)]
+    take_first_image(dir_lookup['real_original'], dir_lookup['original'])
+
+    #spot5 = pd.read_csv('spot5.csv')
+    #modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] < 11.8) & (spot5['Marker 8 Intensity'] > 9.1)]
     # intensity range leads to 892 label 1 samples, 880 label 0 samples
 
-    gen_samples(dir_lookup, rgb_orders = rgb_orders, metadata = modified_spot5)#'SOX10_AFRemoved_pyr16_spot_005.png')
+    #gen_samples(dir_lookup, rgb_orders = rgb_orders, metadata = modified_spot5)#'SOX10_AFRemoved_pyr16_spot_005.png')
 
 ''' \\ -x, -y
     (x1, y1) --------
