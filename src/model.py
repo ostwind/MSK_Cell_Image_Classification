@@ -1,16 +1,14 @@
 ''' A modified mnist model from
     https://github.com/ageron/handson-ml/blob/master/13_convolutional_neural_networks.ipynb
 '''
-
-import matplotlib
-import matplotlib.pyplot as plt
-plt.rcParams['axes.labelsize'] = 14
-plt.rcParams['xtick.labelsize'] = 12
-plt.rcParams['ytick.labelsize'] = 12
+from datetime import datetime
+now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+root_logdir = 'tf_logs'
+logdir = '{}/run-{}/'.format(root_logdir, now)
 
 import numpy as np
 import os
-from sample_gen import dataload, show
+from sample_gen import dataload
 import tensorflow as tf
 from functools import partial
 
@@ -28,7 +26,7 @@ channels = 23
 n_inputs = height * width * channels
 
 conv1_fmaps = 10
-conv1_ksize = 5
+conv1_ksize = 4
 conv1_stride = 1
 conv1_pad = "SAME"
 
@@ -44,6 +42,8 @@ n_outputs = 2
 
 reset_graph()
 
+training = tf.placeholder_with_default(False, shape=(), name='training')
+batch_norm_momentum = 0.9
 batch_norm_layer = partial(tf.layers.batch_normalization, training=training,
 momentum=batch_norm_momentum)
 
@@ -84,8 +84,10 @@ with tf.name_scope("output"):
 with tf.name_scope("train"):
     xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=y)
     loss = tf.reduce_mean(xentropy)
+    extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     optimizer = tf.train.AdamOptimizer()
-    training_op = optimizer.minimize(loss)
+    with tf.control_dependencies(extra_update_ops):
+        training_op = optimizer.minimize(loss)
 
 with tf.name_scope("eval"):
     correct = tf.nn.in_top_k(logits, y, 1)
@@ -95,23 +97,34 @@ with tf.name_scope("init_and_save"):
     init = tf.global_variables_initializer()
     saver = tf.train.Saver()
 
-n_epochs = 10
+mse_summary = tf.summary.scalar('loss', loss)
+file_writer = tf.summary.FileWriter(logdir, tf.get_default_graph())
+
+n_epochs = 4
 test_path = os.path.join(dir, 'test_set/')
+
+mislabeled_samples = set()
+
+import pickle
 
 def test():
     preds = []
     true = []
     with tf.Session() as sess:
-        init.run()
         saver.restore(sess, './my_mnist_model')
-        for X_test, y_test in dataload(test_path):
+        for X_test, y_test, f_name in dataload(test_path):
             Z = Y_proba.eval(feed_dict= {X: X_test})
             for i in range(len(y_test)):
                 true.append( y_test[i])
                 preds.append( np.argmax(Z[i], axis = 0) )
-            print( Z[:10], y_test[:10] )
+                if y_test[i] != np.argmax(Z[i], axis = 0):
+                    mislabeled_samples.add(f_name[i])
+            #print( Z[:10], y_test[:10].transpose() )
     print( len(preds),
     1- ((np.abs( np.array(preds) - np.array(true) ).sum())/len(preds)) )
+
+    with open('mislabeled.p', 'wb') as fp:
+        pickle.dump(list(mislabeled_samples), fp)
 
 def train():
     with tf.Session() as sess:
@@ -119,10 +132,20 @@ def train():
         #saver.restore(sess, './my_mnist_model')
         for epoch in range(n_epochs):
             i = 0
-            for X_batch, y_batch in dataload(tensor_path):
-                sess.run(training_op, feed_dict={X: X_batch, y: y_batch})
+            for X_batch, y_batch, f in dataload(tensor_path):
+
+                if i % 10 == 0:
+                    summary_str = mse_summary.eval(feed_dict = {X: X_batch, y: y_batch})
+                    step = epoch * (24000/400) + i
+                    file_writer.add_summary(summary_str, step)
+                sess.run( training_op,
+                feed_dict={training:True, X: X_batch, y: y_batch})
+
+                i += 1
+
             acc_train = accuracy.eval(feed_dict = {X: X_batch, y: y_batch} )
             print(epoch, acc_train)
             save_path = saver.save(sess, "./my_mnist_model")
+    file_writer.close()
 train()
 test()

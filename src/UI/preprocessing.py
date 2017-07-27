@@ -151,13 +151,12 @@ if __name__ == '__main__':
     rgb_orders = [['SOX10', 'CD4', 'S001'], [ 'MELANA', 'CD8', 'S001'], ['LCA', 'CD3','S001']]
     dir_lookup = make_dir_dictionary(rgb_orders, '/home/lihan/Documents/image/data/real_original/')
 
-    take_first_image(dir_lookup['real_original'], dir_lookup['original'])
+    #take_first_image(dir_lookup['real_original'], dir_lookup['original'])
 
-    #spot5 = pd.read_csv('spot5.csv')
-    #modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] < 11.8) & (spot5['Marker 8 Intensity'] > 9.1)]
-    # intensity range leads to 892 label 1 samples, 880 label 0 samples
-
-    #gen_samples(dir_lookup, rgb_orders = rgb_orders, metadata = modified_spot5)#'SOX10_AFRemoved_pyr16_spot_005.png')
+    spot5 = pd.read_csv('spot5.csv')
+    modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] < 11.8) & (spot5['Marker 8 Intensity'] > 9.1)]
+    #intensity range leads to 892 label 1 samples, 880 label 0 samples
+    gen_samples(dir_lookup, rgb_orders = rgb_orders, metadata = modified_spot5)#'SOX10_AFRemoved_pyr16_spot_005.png')
 
 ''' \\ -x, -y
     (x1, y1) --------
@@ -168,27 +167,3 @@ if __name__ == '__main__':
         ---------(x2, y2)
                 +x, +y \\
 '''
-
-# for grid approach to generating samples
-# def yield_coord(image, shift = [0, 0], stride = [400, 200], axis = 'x'):
-#     height, width = (4400, 7000)
-#     if axis =='x':
-#         for x in range(4000, width, stride[0]):
-#             yield x + shift[0] , x+ shift[0] +stride[0]
-#     else:
-#         for y in range(0, height, stride[1]):
-#             yield y + shift[1], y+ shift[1] +stride[1]
-#
-# def grid_crop(input_directory = original, output_directory = cropped):
-#     for subdir, dirs, files in os.walk(input_directory):
-#         for f in files:
-#             image = Image.open(input_directory + f)
-#             #print(f)
-#             if '.tif' in f:
-#                 for y1, y2 in yield_coord( f, axis = 'y'):
-#                     for x1, x2 in yield_coord( f):
-#                         small_img = image.crop((x1, y1, x2, y2))
-#                         save_name = '%s_%s_%s_%s_%s_%s.tif' %(
-#                         f.split('_')[-1][:3], f.split('_')[0], x1, x2, y1, y2)
-#                         small_img.save(output_directory + save_name)
-#grid_crop()
