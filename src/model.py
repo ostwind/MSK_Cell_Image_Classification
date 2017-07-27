@@ -11,9 +11,11 @@ import os
 from sample_gen import dataload
 import tensorflow as tf
 from functools import partial
+import pickle
 
 dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
-tensor_path = os.path.join(dir, 'tensors/')
+test_path = os.path.join(dir, 'test_set/')
+train_path = os.path.join(dir, 'tensors/')
 
 def reset_graph(seed=42):
     tf.reset_default_graph()
@@ -26,7 +28,7 @@ channels = 23
 n_inputs = height * width * channels
 
 conv1_fmaps = 10
-conv1_ksize = 4
+conv1_ksize = 5
 conv1_stride = 1
 conv1_pad = "SAME"
 
@@ -71,7 +73,8 @@ with tf.name_scope("pool3"):
     pool3_flat = tf.reshape(pool3, shape=[-1, pool3_fmaps * 25 * 25])
 
 with tf.name_scope("fc1"):
-    fc1 = tf.layers.dense(pool3_flat, n_fc1, activation=tf.nn.relu, name="fc1")
+    fc1 = tf.layers.dense(pool3_flat, n_fc1, name="fc1")#, activation = tf.nn.elu)
+    bn3 = tf.nn.elu(batch_norm_layer(fc1))
     print('fc1: ', fc1.get_shape())
 
 with tf.name_scope("output"):
@@ -97,22 +100,22 @@ with tf.name_scope("init_and_save"):
     init = tf.global_variables_initializer()
     saver = tf.train.Saver()
 
-mse_summary = tf.summary.scalar('loss', loss)
-file_writer = tf.summary.FileWriter(logdir, tf.get_default_graph())
+loss_record = tf.summary.scalar('loss', loss)
+file_writer = tf.summary.FileWriter(logdir + 'loss', tf.get_default_graph())
 
-n_epochs = 4
-test_path = os.path.join(dir, 'test_set/')
+acc_record = tf.summary.scalar('accuracy', accuracy)
+train_acc_writer = tf.summary.FileWriter(logdir + 'train', tf.get_default_graph())
+test_acc_writer = tf.summary.FileWriter(logdir + 'test', tf.get_default_graph())
 
-mislabeled_samples = set()
-
-import pickle
+write_op = tf.summary.merge_all() # put into session.run!
 
 def test():
+    mislabeled_samples = set()
     preds = []
     true = []
     with tf.Session() as sess:
-        saver.restore(sess, './my_mnist_model')
-        for X_test, y_test, f_name in dataload(test_path):
+        saver.restore(sess, './saved_model')
+        for X_test, y_test, f_name in dataload(train = False):
             Z = Y_proba.eval(feed_dict= {X: X_test})
             for i in range(len(y_test)):
                 true.append( y_test[i])
@@ -129,23 +132,41 @@ def test():
 def train():
     with tf.Session() as sess:
         init.run()
-        #saver.restore(sess, './my_mnist_model')
+        #saver.restore(sess, './saved_model')
+        n_epochs = 4
         for epoch in range(n_epochs):
-            i = 0
-            for X_batch, y_batch, f in dataload(tensor_path):
+            batch_ind = 0
+            g = dataload(train = False)
 
-                if i % 10 == 0:
-                    summary_str = mse_summary.eval(feed_dict = {X: X_batch, y: y_batch})
-                    step = epoch * (24000/400) + i
+            for X_batch, y_batch, f in dataload(train = True):
+                #acc_train = accuracy.eval(feed_dict = {X: X_batch, y: y_batch} )
+                #acc_test = accuracy.eval(feed_dict = {X: X_test, y: y_test} )
+
+                if batch_ind % 30 == 0:
+                    summary_str = loss_record.eval(feed_dict = {X: X_batch, y: y_batch})
+                    step = epoch * (108000/400) + batch_ind
+                    #if i % 30 == 0:
+                    #    print(epoch, step, acc_train)
                     file_writer.add_summary(summary_str, step)
-                sess.run( training_op,
+                    file_writer.flush()
+
+                    acc_train = acc_record.eval(feed_dict = {
+                    training: False, X: X_batch, y: y_batch})
+                    train_acc_writer.add_summary(acc_train, step)
+                    train_acc_writer.flush()
+
+                    X_test, y_test, f = g.__next__() # python 3 's next
+                    acc_test = acc_record.eval(feed_dict = {
+                    training: False, X: X_test, y: y_test})
+                    test_acc_writer.add_summary(acc_test, step)
+                    test_acc_writer.flush()
+
+                sess.run( [training_op, write_op],
                 feed_dict={training:True, X: X_batch, y: y_batch})
+                batch_ind += 1
 
-                i += 1
-
-            acc_train = accuracy.eval(feed_dict = {X: X_batch, y: y_batch} )
-            print(epoch, acc_train)
-            save_path = saver.save(sess, "./my_mnist_model")
+            #print(epoch, acc_train, acc_test)
+            save_path = saver.save(sess, "./saved_model")
     file_writer.close()
 train()
 test()

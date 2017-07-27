@@ -7,7 +7,6 @@ import tensorflow as tf
 import random
 import glob
 
-
 img_length = 50
 
 def center(box):
@@ -77,8 +76,8 @@ def rotate(tensor): # dont rotate if there are enough samples
         return 'bad dim'
 
     rotations = [tensor]
-    #for i in range(3):
-    #    rotations.append(np.rot90( rotations[-1], axes = (0,1)))
+    for i in range(3):
+        rotations.append(np.rot90( rotations[-1], axes = (0,1)))
     return rotations
 
 def save(region, spot, cell_id, label, output_dir ):
@@ -122,39 +121,42 @@ def gen_tensors(spot, input_directory, output_directory, test_directory, metadat
         if i % 2000 == 0:
             print(i, spot)
 
-def dataload(input_directory):
+def dataload(train):
+    input_directory = test_path
+    if train:
+        input_directory = train_path
+
     cache = []
-    j = 0
-    i = 0
+    sample_num = 0
     for subdir, dirs, files in os.walk(input_directory):
         for f in files:
             if '.dat' in f:
                 tf_tensor = ( load(read_from_path = input_directory + f) )
                 cache.append( (tf_tensor, np.array( [ int(f.split('_')[1]) ]), f.split('_')[0] ) )
-                i += 1
-                if i == 2000:
-                    print(j*i)
+                sample_num += 1
+                if sample_num == 4000:
+                #    print(j*i)
                     random.shuffle(cache)
-                    while i != 0:
-                        next_batch = cache[-400:]
-                        i -= 400
-                        del cache[-400:]
+                    while sample_num != 0:
+                        next_batch = cache[-1000:]
+                        sample_num -= 1000
+                        del cache[-1000:]
                         tensor_batch, label_batch, file_name_batch = zip(*next_batch)
                         label_batch = np.concatenate(label_batch, axis = 0)
                         yield tensor_batch, label_batch, file_name_batch
-                    j += 1
 
 def empty_dir(path):
     files = glob.glob(path + '*')
     for f in files:
         os.remove(f)
 
+dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
+original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
+train_path = os.path.join(dir, 'tensors/')
+test_path = os.path.join(dir, 'test_set/')
+
 if __name__ == '__main__':
-    dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
-    original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
-    tensor_path = os.path.join(dir, 'tensors/')
-    test_path = os.path.join(dir, 'test_set/')
-    empty_dir(tensor_path)
+    empty_dir(train_path)
     empty_dir(test_path)
 
     # generate spotX.csv from /data/cell_metadata.csv
@@ -164,4 +166,4 @@ if __name__ == '__main__':
         modified_spot = spot.loc[(spot['Marker 8 Intensity'] < 12) & (spot['Marker 8 Intensity'] > 8)]
         #modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] > 12) & (spot5['Marker 8 Intensity'] < 8)]
         #print(spot['Marker 8 Positive'].value_counts())
-        gen_tensors(i, original_imgs_path, tensor_path, test_path, spot)#modified_spot5)
+        gen_tensors(i, original_imgs_path, train_path, test_path, spot)#modified_spot5)
