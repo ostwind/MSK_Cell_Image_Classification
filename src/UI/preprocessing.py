@@ -9,6 +9,7 @@ import numpy as np
 import os
 import pandas as pd
 from tifffile import TiffFile
+import glob
 
 def take_first_image(input_directory, output_directory):
     for subdir, dirs, files in os.walk(input_directory):
@@ -20,16 +21,17 @@ def take_first_image(input_directory, output_directory):
                     im.save(output_directory + f)
                     im.close()
 
-def colorized(file_paths, output_path):
+def colorized(file_paths, output_path, prepend = ''):
     ''' given a list of tif file paths, normalize underlying matrices wrt
         pixel intensity and experimental distribution of markers, then fuse
         multiple greyscale into a (8int, 8int, 8int) RGB additive format
     '''
     matrix_stack = []
-    img_name = ''
+    img_name = prepend
     for path in file_paths:
         matrix_stack.append( np.array(Image.open(path)) )
         img_name += path.split('/')[-1].split('_')[0] + '_'
+
 
     weights = [256-200, 256-175, 256+50]
     RGB = np.zeros((matrix_stack[0].shape[0], matrix_stack[0].shape[1], 3), "uint8")
@@ -59,54 +61,56 @@ def box(center, rect_h = 500):
 
 def draw_box(
 input_directory, #= colored + 'SOX10_AFRemoved_pyr16_spot_005.png',
-output_directory, zoomed_output_directory, metadata
+output_directory, zoomed_output_directory, total_metadata
 ):
-    #print(output_directory)
-    count = 0
-    for i, row in metadata.iterrows():
-        im = Image.open(input_directory)
-        draw = ImageDraw.Draw(im)
-        xmin = metadata.ix[i,'XMin']
-        ymin = metadata.ix[i,'YMin']
-        xmax = metadata.ix[i,'XMax']
-        ymax = metadata.ix[i,'YMax']
-        cell_id = metadata.ix[i, 'Object Id']
-        cd4_intensity = metadata.ix[i, 'Marker 2 Intensity']
-        cd4_pos = metadata.ix[i, 'Marker 2 Positive']
-        sox10_pos = metadata.ix[i, 'Marker 8 Positive']
-        sox10_intensity = metadata.ix[i, 'Marker 8 Intensity']
-        if 1:
-            count += 1
-            c = center([xmin, ymin, xmax, ymax])
-            save_name = '%s_cd4_%s|%.1f_sox10_%s|%.1f.png' %(
-            cell_id, cd4_pos, cd4_intensity, sox10_pos, sox10_intensity)
+    all_spots = glob.glob(input_directory + '*')
+    all_spots = [x.split('/')[-1] for x in all_spots]
+    for spot in ['2','3','4','5']:
+        #print( total_metadata['Image Location'].str )
+        metadata = total_metadata[ total_metadata['Image Location'].str.contains( 'Spot' + spot + '_1') ]
+        #print(all_spots)
+        spot_image = [x for x in all_spots if spot == x.split('_')[0]][0]
+        #print(metadata.shape)
 
-            # nobox = im.crop( ( box(c, rect_h = 250)  ) )
-            # nobox = nobox.resize((435,335), Image.ANTIALIAS)
-            # nobox.save(nobox_output_directory + save_name, 'PNG')
+        count = 0
+        for i, row in metadata.iterrows():
+            im = Image.open(input_directory + spot_image)
+            draw = ImageDraw.Draw(im)
+            xmin = metadata.ix[i,'XMin']
+            ymin = metadata.ix[i,'YMin']
+            xmax = metadata.ix[i,'XMax']
+            ymax = metadata.ix[i,'YMax']
+            cell_id = metadata.ix[i, 'Object Id']
+            cd4_intensity = metadata.ix[i, 'Marker 2 Intensity']
+            cd4_pos = metadata.ix[i, 'Marker 2 Positive']
+            sox10_pos = metadata.ix[i, 'Marker 8 Positive']
+            sox10_intensity = metadata.ix[i, 'Marker 8 Intensity']
+            if 1:
+                count += 1
+                c = center([xmin, ymin, xmax, ymax])
+                save_name = '%s_cd4_%s|%.1f_sox10_%s|%.1f.png' %(
+                cell_id, cd4_pos, cd4_intensity, sox10_pos, sox10_intensity)
 
-            draw.rectangle([xmin - 10, ymin - 10, xmax + 10, ymax + 10], outline = 'red')
+                draw.rectangle([xmin - 10, ymin - 10, xmax + 10, ymax + 10], outline = 'red')
 
-            big_img = im.crop( ( box(c) ) )
-            big_img.save(output_directory + '/' + save_name, 'PNG')
+                big_img = im.crop( ( box(c) ) )
+                big_img.save(output_directory + '/' + save_name, 'PNG')
 
-            small_img = im.crop( ( box(c, rect_h = 250)  ) )
-            small_img = small_img.resize((435,335), Image.ANTIALIAS)
-            small_img.save(zoomed_output_directory +'/'+ save_name, 'PNG')
+                small_img = im.crop( ( box(c, rect_h = 250)  ) )
+                small_img = small_img.resize((435,335), Image.ANTIALIAS)
+                small_img.save(zoomed_output_directory +'/'+ save_name, 'PNG')
 
-            del draw
+                del draw
 
-            if count % 100 == 0:
-                print( 'percentage of samples generated: ', count/metadata.shape[0] )
+                if count % 100 == 0:
+                    print( 'percentage of samples generated: ', count/metadata.shape[0] )
 
 def gen_samples(dir_lookup, metadata, rgb_orders = [['SOX10', 'CD4', 'S001']]):
     take_first_image( input_directory = dir_lookup['real_original'], output_directory = dir_lookup['original'] )
 
     #combine three protein markers of the entire view
-    file_paths = []
-    for subdir, dirs, files in os.walk( dir_lookup['original'] ):
-        for f in files:
-            file_paths.append( os.path.join( dir_lookup['original'], f) )
+    # WARNING: ARE THERE MULTIPLE SPOTS? YES
+    files = glob.glob( dir_lookup['original'] + '*')
 
     i = 1
     # sort and select paths found in rgb_order list

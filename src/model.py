@@ -66,7 +66,6 @@ conv2 = tf.layers.conv2d(bn1, filters=conv2_fmaps, kernel_size=conv2_ksize,
 print('conv2: ', conv2.get_shape())
 bn2 = tf.nn.elu(batch_norm_layer(conv2))
 
-
 with tf.name_scope("pool3"):
     pool3 = tf.nn.max_pool(bn2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="VALID")
     print('pool3: ', pool3.get_shape())
