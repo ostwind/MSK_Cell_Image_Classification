@@ -109,17 +109,35 @@ def gen_tensors(spot, input_directory, output_directory, test_directory, metadat
         cd4_pos = metadata.ix[i, 'Marker 2 Positive']
         sox10_intensity = metadata.ix[i, 'Marker 8 Intensity']
         sox10_pos = metadata.ix[i, 'Marker 8 Positive']
+        #cd8_pos = meta
 
         path_to_write = output_directory
         if s[i] < 0.3: # train/test split at 70/30
             path_to_write = test_directory
 
-        # note that cell ID is unique across spots
+        label = 0
+        if int(cd4_pos) == 1 and int(sox10_pos) == 0:
+            label = 1 # cd4+
+        elif int(cd4_pos) == 0 and int(sox10_pos) == 1:
+            label = 0 # tumor cell
+        elif int(cd4_pos) == 0 and int(sox10_pos) == 0:
+            label = 2 # cd8+
+        else:
+            continue
+
         save( [xmin, ymin, xmax, ymax], int(spot),
-        cell_id, sox10_pos, path_to_write)
+        cell_id, label, path_to_write)
+
         i += 1
         if i % 2000 == 0:
             print(i, spot)
+
+def update_cache(cache, sample_num, batch_size):
+    next_batch = cache[-batch_size:]
+    del cache[-batch_size:]
+    tensor_batch, label_batch, file_name_batch = zip(*next_batch)
+    label_batch = np.concatenate(label_batch, axis = 0)
+    return tensor_batch, label_batch, file_name_batch
 
 def dataload(train):
     input_directory = test_path
@@ -127,6 +145,7 @@ def dataload(train):
         input_directory = train_path
 
     cache = []
+    batch_size = 500
     sample_num = 0
     for subdir, dirs, files in os.walk(input_directory):
         for f in files:
@@ -134,16 +153,16 @@ def dataload(train):
                 tf_tensor = ( load(read_from_path = input_directory + f) )
                 cache.append( (tf_tensor, np.array( [ int(f.split('_')[1]) ]), f.split('_')[0] ) )
                 sample_num += 1
-                if sample_num == 4000:
-                #    print(j*i)
+                if sample_num == 5000:
                     random.shuffle(cache)
                     while sample_num != 0:
-                        next_batch = cache[-1000:]
-                        sample_num -= 1000
-                        del cache[-1000:]
-                        tensor_batch, label_batch, file_name_batch = zip(*next_batch)
-                        label_batch = np.concatenate(label_batch, axis = 0)
-                        yield tensor_batch, label_batch, file_name_batch
+                        yield update_cache(cache, sample_num, batch_size)
+                        sample_num -= batch_size
+
+    random.shuffle(cache)
+    while sample_num > batch_size: # yield remainder
+        yield update_cache(cache,sample_num, batch_size)
+        sample_num -= batch_size
 
 def empty_dir(path):
     files = glob.glob(path + '*')
@@ -166,4 +185,4 @@ if __name__ == '__main__':
         modified_spot = spot.loc[(spot['Marker 8 Intensity'] < 12) & (spot['Marker 8 Intensity'] > 8)]
         #modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] > 12) & (spot5['Marker 8 Intensity'] < 8)]
         #print(spot['Marker 8 Positive'].value_counts())
-        gen_tensors(i, original_imgs_path, train_path, test_path, spot)#modified_spot5)
+        gen_tensors(i, original_imgs_path, train_path, test_path, spot)
