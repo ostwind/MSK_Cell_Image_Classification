@@ -90,11 +90,14 @@ def save(region, spot, cell_id, label, output_dir ):
         if t.shape != (img_length, img_length, 23):
             print(t.shape)
             continue
-        #print(t[:,:,17].shape, t[:,:,17].dtype)
-#        mo = Image.fromarray( (t[:,:,10] ))
-#        mo.save(output_dir + '%s_%s_%s.png' %(cell_id, label, i), 'PNG')
-        t.dump(output_dir + '%s_%s_%s.dat' %(cell_id, label, i))
+        filename = '%s_%s_%s.bin' %(cell_id, label, i)
+        rotated_tensor = np.insert( t, 0, int(label) )
+        rotated_tensor = rotated_tensor.flatten()
+        rotated_tensor.tofile(output_dir + filename)
         i += 1
+        #        mo = Image.fromarray( (t[:,:,10] ))
+        #        mo.save(output_dir + '%s_%s_%s.png' %(cell_id, label, i), 'PNG')
+
 
 def gen_tensors(spot, input_directory, output_directory, test_directory, metadata):
     i = 0
@@ -130,7 +133,7 @@ def gen_tensors(spot, input_directory, output_directory, test_directory, metadat
 
         i += 1
         if i % 2000 == 0:
-            print(i, spot)
+            print('files done ', i, 'spot: ', spot)
 
 def update_cache(cache, sample_num, batch_size):
     next_batch = cache[-batch_size:]
@@ -139,30 +142,30 @@ def update_cache(cache, sample_num, batch_size):
     label_batch = np.concatenate(label_batch, axis = 0)
     return tensor_batch, label_batch, file_name_batch
 
-def dataload(train):
-    input_directory = test_path
-    if train:
-        input_directory = train_path
-
-    cache = []
-    batch_size = 500
-    sample_num = 0
-    for subdir, dirs, files in os.walk(input_directory):
-        for f in files:
-            if '.dat' in f:
-                tf_tensor = ( load(read_from_path = input_directory + f) )
-                cache.append( (tf_tensor, np.array( [ int(f.split('_')[1]) ]), f.split('_')[0] ) )
-                sample_num += 1
-                if sample_num == 5000:
-                    random.shuffle(cache)
-                    while sample_num != 0:
-                        yield update_cache(cache, sample_num, batch_size)
-                        sample_num -= batch_size
-
-    random.shuffle(cache)
-    while sample_num > batch_size: # yield remainder
-        yield update_cache(cache,sample_num, batch_size)
-        sample_num -= batch_size
+# def dataload(train):
+#     input_directory = test_path
+#     if train:
+#         input_directory = train_path
+#
+#     cache = []
+#     batch_size = 64
+#     sample_num = 0
+#     for subdir, dirs, files in os.walk(input_directory):
+#         for f in files:
+#             if '.dat' in f:
+#                 tf_tensor = ( load(read_from_path = input_directory + f) )
+#                 cache.append( (tf_tensor, np.array( [ int(f.split('_')[1]) ]), f.split('_')[0] ) )
+#                 sample_num += 1
+#                 if sample_num == 10000:
+#                     random.shuffle(cache)
+#                     while sample_num != 0:
+#                         yield update_cache(cache, sample_num, batch_size)
+#                         sample_num -= batch_size
+#
+#     random.shuffle(cache)
+#     while sample_num > batch_size: # yield remainder
+#         yield update_cache(cache,sample_num, batch_size)
+#         sample_num -= batch_size
 
 def empty_dir(path):
     files = glob.glob(path + '*')
@@ -174,15 +177,81 @@ original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real
 train_path = os.path.join(dir, 'tensors/')
 test_path = os.path.join(dir, 'test_set/')
 
+def read_my_data(filename_queue):
+
+    class ImageRecord(object):
+        def __init__(self):
+            # Dimensions of the images in the dataset.
+            self.height = 50
+            self.width = 50
+            self.depth = 23
+
+    result = ImageRecord()
+
+    label_bytes = 1
+    image_bytes = result.height * result.width * result.depth
+    record_bytes = label_bytes + image_bytes
+
+    assert record_bytes == 57500+1
+
+      # Read a record, getting filenames from the filename_queue.  No
+      # header or footer in the binary, so we leave header_bytes
+      # and footer_bytes at their default of 0.
+    reader = tf.FixedLengthRecordReader(record_bytes=record_bytes)
+    result.key, value = reader.read(filename_queue)
+
+      # Convert from a string to a vector of uint8 that is record_bytes long.
+    record_bytes = tf.decode_raw(value, tf.uint8)
+
+      # The first bytes represent the label, which we convert from uint8->int32.
+    result.label = tf.cast(tf.slice(record_bytes, [0], [label_bytes]), tf.int32)
+
+      # The remaining bytes after the label represent the image, which we reshape
+      # from [depth * height * width] to [depth, height, width].
+    depth_major = tf.reshape(tf.slice(record_bytes, [label_bytes], [image_bytes]),
+    [result.depth, result.height, result.width])
+      # Convert from [depth, height, width] to [height, width, depth].
+    result.imagematrix = tf.transpose(depth_major, [1, 2, 0])
+    return result
+
+def inputs(input_directory, batch_size = 64, num_epochs = None):
+    string_tensor = []
+    for subdir, dirs, files in os.walk(input_directory):
+        for f in files:
+            if '.bin' in f:
+                string_tensor.append(input_directory+f)
+
+    filename_queue = tf.train.string_input_producer(
+    string_tensor, num_epochs = num_epochs, shuffle = True)
+
+    image_record = read_my_data(filename_queue)
+    image_record.imagematrix = tf.cast(image_record.imagematrix, tf.float32)
+
+    min_after_dequeue = 10000
+    capacity = min_after_dequeue + ( 3 * batch_size )
+
+    example_batch, label_batch = tf.train.shuffle_batch(
+    [image_record.imagematrix, image_record.label], batch_size = batch_size, capacity = capacity,
+    min_after_dequeue = min_after_dequeue, allow_smaller_final_batch = True)
+
+    #print(label_batch.get_shape())
+    label_batch = tf.reshape(label_batch, shape=[-1])
+    #print(label_batch.get_shape())
+    return example_batch, label_batch
+
 if __name__ == '__main__':
-    empty_dir(train_path)
-    empty_dir(test_path)
+
+    for i in range(5):#in inputs(test_path):
+        print(inputs(test_path))
+
+    #empty_dir(train_path)
+    #empty_dir(test_path)
 
     # generate spotX.csv from /data/cell_metadata.csv
 
-    for i in [2, 3, 4, 5]:
-        spot = pd.read_csv('spot%s.csv' %(i))
-        modified_spot = spot.loc[(spot['Marker 8 Intensity'] < 12) & (spot['Marker 8 Intensity'] > 8)]
-        #modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] > 12) & (spot5['Marker 8 Intensity'] < 8)]
-        #print(spot['Marker 8 Positive'].value_counts())
-        gen_tensors(i, original_imgs_path, train_path, test_path, spot)
+    # for i in [2, 3, 4, 5]:
+    #     spot = pd.read_csv('spot%s.csv' %(i))
+    #     modified_spot = spot.loc[(spot['Marker 8 Intensity'] < 12) & (spot['Marker 8 Intensity'] > 8)]
+    #     #modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] > 12) & (spot5['Marker 8 Intensity'] < 8)]
+    #     #print(spot['Marker 8 Positive'].value_counts())
+    #     gen_tensors(i, original_imgs_path, train_path, test_path, spot)

@@ -5,9 +5,6 @@ try:
 except ImportError:
     from Tkinter import *
 
-#/home/lihan/Documents/image/data/S11_27456_1_1
-#D:\somefile\somefile2\file.tif
-
 def collect_spots(path):
     # collect filenames at this path by spot
     spot_dict = dict()
@@ -69,7 +66,6 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
 
     for tif_name in tif_ledger[spot]:
         channel_names_to_sort.append( [channel_name(tif_name), tif_name] )
-    #print(channel_names_to_sort)
     channel_names_to_sort.sort(key=lambda x: x[0])
 
     for c_name, tif_name in channel_names_to_sort:
@@ -164,8 +160,8 @@ def update_usr(listbox, text = '', end = False ):
         listbox.insert(END, '    ' + text)
         listbox.insert(END, ' ')
     else:
-        listbox.insert(ACTIVE, '    ' + text)
-        listbox.insert(ACTIVE, ' ')
+        listbox.insert(0, '    ' + text)
+        listbox.insert(0, ' ')
 def show_entry_fields(listbox):
    ''' calls afi writing functions according to user input into GUI
         e1 corresponds to first field, e2 to second field, so on.
@@ -203,14 +199,5 @@ update_usr(listbox, 'In a directory, TIFFs belonging to the same spot are linked
 update_usr(listbox, '________Num of Stains________', True)
 update_usr(listbox, """Warnings are printed if .tif files for one spot do not contain""", True)
 update_usr(listbox, 'designated number of stains (leave blank for no warning)', True)
-
-# update_usr(listbox, """.afi file displays this path to HALO, use directory mask if HALO is on another machine """, True)
-#
-# update_usr(listbox, 'the path also need to end with the folder containing the images.', True)
-# update_usr(listbox, 'user must conclude path with backslash or forward slash depending on Operating System,', True)
-
-# update_usr(listbox, '________Directory Mask________', True )
-#
-#
 
 mainloop( )
