@@ -25,12 +25,13 @@ train_path = os.path.join(dir, 'tensors/')
 test_path = os.path.join(dir, 'test_set/')
 
 with tf.name_scope('input'):
-    train_batch, train_labels_batch = inputs(train_path)
-    test_batch, test_labels_batch = inputs(test_path)
+    train_batch, train_labels_batch, train_fnames = inputs(train_path)
+    test_batch, test_labels_batch, test_fnames = inputs(test_path)
     training = tf.placeholder_with_default(True, shape=(), name='training')
 
-    input_batch, input_labels_batch = tf.cond(training, lambda: (train_batch, train_labels_batch),
-     lambda:(test_batch, test_labels_batch))
+    input_batch, input_labels_batch, input_fnames = tf.cond(training,
+    lambda: (train_batch, train_labels_batch, train_fnames),
+    lambda:(test_batch, test_labels_batch, test_fnames))
     # check tf.cond doc to make sure lambda: True, lambda: False
     #print(train_batch.get_shape(), train_labels_batch.get_shape())
 
@@ -77,9 +78,9 @@ with tf.name_scope('conv2'):
 
 with tf.name_scope("pool3"):
     pool3 = tf.nn.max_pool(hidden2_drop, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="VALID")
-    print('pool3: ', pool3.get_shape())
+    #print('pool3: ', pool3.get_shape())
     pool3_flat = tf.reshape(pool3, shape=[-1, pool3_fmaps * 25 * 25])
-    print('pool_flat: ', pool3_flat.get_shape())
+    #print('pool_flat: ', pool3_flat.get_shape())
 
 with tf.name_scope("fc1"):
     fc1 = tf.layers.dense(pool3_flat, n_fc1, name="fc1")#, activation = tf.nn.elu)
@@ -91,6 +92,10 @@ with tf.name_scope("output"):
     logits = batch_norm_layer(logits_before_bn)
     #print('logits: ', logits.get_shape())
     Y_proba = tf.nn.softmax(logits, name="Y_proba")
+
+    preds  = tf.cast( tf.argmax(logits, 1), tf.int32 )
+    mislabeled = tf.not_equal( preds, input_labels_batch )
+    mislabeled_filenames = tf.cast( tf.boolean_mask( input_fnames, mislabeled ), tf.string)
 
 with tf.name_scope('loss'): # once I mv this section from 'train', loss appears as loss_1 on tensorboard
     xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=input_labels_batch)
@@ -115,9 +120,12 @@ loss_record = tf.summary.scalar('loss', loss)
 file_writer = tf.summary.FileWriter(logdir + 'loss', tf.get_default_graph())
 
 acc_record = tf.summary.scalar('accuracy', accuracy)
-
 train_acc_writer = tf.summary.FileWriter(logdir + 'train', tf.get_default_graph())
 test_acc_writer = tf.summary.FileWriter(logdir + 'test', tf.get_default_graph())
+
+misclassified_record = tf.summary.text('misclassifieds', mislabeled_filenames)
+misclassified_writer = tf.summary.FileWriter(logdir + 'misclassified', tf.get_default_graph())
+
 write_op = tf.summary.merge_all() # put into session.run!
 
 def train():
@@ -141,9 +149,11 @@ def train():
                     acc_test = acc_record.eval(feed_dict = { training: False} )
                     test_acc_writer.add_summary(acc_test, step)
 
+                    misclass = misclassified_record.eval(feed_dict = { training: False} )
+                    misclassified_writer.add_summary(misclass, step)
+
                 _, loss_val = sess.run(
-                [training_op, write_op], feed_dict={training: True} ) #[training_op, write_op],
-                #feed_dict={training:True, X: X_batch, y: y_batch})
+                [training_op, write_op], feed_dict={training: True} )
 
                 step += 1
 
@@ -151,8 +161,9 @@ def train():
     file_writer.close()
 train()
 
-
 #def test():
+
+
 #    with tf.name_scope('validation'):
 #        test_image, test_label = inputs(training = False)
 

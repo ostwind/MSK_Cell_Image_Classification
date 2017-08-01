@@ -135,38 +135,6 @@ def gen_tensors(spot, input_directory, output_directory, test_directory, metadat
         if i % 2000 == 0:
             print('files done ', i, 'spot: ', spot)
 
-def update_cache(cache, sample_num, batch_size):
-    next_batch = cache[-batch_size:]
-    del cache[-batch_size:]
-    tensor_batch, label_batch, file_name_batch = zip(*next_batch)
-    label_batch = np.concatenate(label_batch, axis = 0)
-    return tensor_batch, label_batch, file_name_batch
-
-# def dataload(train):
-#     input_directory = test_path
-#     if train:
-#         input_directory = train_path
-#
-#     cache = []
-#     batch_size = 64
-#     sample_num = 0
-#     for subdir, dirs, files in os.walk(input_directory):
-#         for f in files:
-#             if '.dat' in f:
-#                 tf_tensor = ( load(read_from_path = input_directory + f) )
-#                 cache.append( (tf_tensor, np.array( [ int(f.split('_')[1]) ]), f.split('_')[0] ) )
-#                 sample_num += 1
-#                 if sample_num == 10000:
-#                     random.shuffle(cache)
-#                     while sample_num != 0:
-#                         yield update_cache(cache, sample_num, batch_size)
-#                         sample_num -= batch_size
-#
-#     random.shuffle(cache)
-#     while sample_num > batch_size: # yield remainder
-#         yield update_cache(cache,sample_num, batch_size)
-#         sample_num -= batch_size
-
 def empty_dir(path):
     files = glob.glob(path + '*')
     for f in files:
@@ -177,7 +145,7 @@ original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real
 train_path = os.path.join(dir, 'tensors/')
 test_path = os.path.join(dir, 'test_set/')
 
-def read_my_data(filename_queue):
+def read_my_data(filename_queue):#, fname_queue_for_dequeue):
 
     class ImageRecord(object):
         def __init__(self):
@@ -187,6 +155,8 @@ def read_my_data(filename_queue):
             self.depth = 23
 
     result = ImageRecord()
+    #result.filename = fname_queue_for_dequeue.dequeue()
+    #print(result.filename, type(result.filename))
 
     label_bytes = 1
     image_bytes = result.height * result.width * result.depth
@@ -200,6 +170,7 @@ def read_my_data(filename_queue):
     reader = tf.FixedLengthRecordReader(record_bytes=record_bytes)
     result.key, value = reader.read(filename_queue)
 
+    #print(type(result.key), result.key)
       # Convert from a string to a vector of uint8 that is record_bytes long.
     record_bytes = tf.decode_raw(value, tf.uint8)
 
@@ -223,27 +194,31 @@ def _collect_paths(input_directory):
     return string_tensor
 
 
+from random import shuffle
+
 def inputs(input_directory, batch_size = 64, num_epochs = None):
 
     string_tensor = _collect_paths(input_directory)
+    shuffle(string_tensor)
 
     filename_queue = tf.train.string_input_producer(
-    string_tensor, num_epochs = num_epochs, shuffle = True)
+    string_tensor, num_epochs = num_epochs, shuffle = False)
 
     image_record = read_my_data(filename_queue)
     image_record.imagematrix = tf.cast(image_record.imagematrix, tf.float32)
 
     min_after_dequeue = 10000
-    capacity = min_after_dequeue + ( 3 * batch_size )
+    capacity = min_after_dequeue +  3 * batch_size
 
-    example_batch, label_batch = tf.train.shuffle_batch(
-    [image_record.imagematrix, image_record.label], batch_size = batch_size, capacity = capacity,
+    example_batch, label_batch, fname_batch = tf.train.shuffle_batch(
+    [image_record.imagematrix, image_record.label, image_record.key],
+    batch_size = batch_size, capacity = capacity,
     min_after_dequeue = min_after_dequeue, allow_smaller_final_batch = True)
 
     #print(label_batch.get_shape())
     label_batch = tf.reshape(label_batch, shape=[-1])
     #print(label_batch.get_shape())
-    return example_batch, label_batch
+    return example_batch, label_batch, fname_batch
 
 if __name__ == '__main__':
 
