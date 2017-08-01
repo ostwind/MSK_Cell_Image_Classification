@@ -214,12 +214,18 @@ def read_my_data(filename_queue):
     result.imagematrix = tf.transpose(depth_major, [1, 2, 0])
     return result
 
-def inputs(input_directory, batch_size = 64, num_epochs = None):
+def _collect_paths(input_directory):
     string_tensor = []
     for subdir, dirs, files in os.walk(input_directory):
         for f in files:
             if '.bin' in f:
                 string_tensor.append(input_directory+f)
+    return string_tensor
+
+
+def inputs(input_directory, batch_size = 64, num_epochs = None):
+
+    string_tensor = _collect_paths(input_directory)
 
     filename_queue = tf.train.string_input_producer(
     string_tensor, num_epochs = num_epochs, shuffle = True)
