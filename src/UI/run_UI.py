@@ -21,36 +21,35 @@ class MainApplication(Frame):
         self.last_visited = 0
         self.fill_queues()
 
-        #self.queue = self.queue[:100]
-        #self.zoom_queue = self.zoom_queue[:100]
-        ''' here we store user input
-            knows: 0 if sample is unknwn, 1 if sample is knwn (default)
-            labels: 0 if sample is not tumor (defaul), 1 if sample is tumor
+        ''' storing user input
+            ZOOM BUTTON < == > self.zooms ARRAY
             zooms: 0 if not zoomed (default), 1 if zoomed
+
+            RADIO BUTTONS < == > self.labels MATRIX
+            |tumor: 0 if sample is not tumor (default), 1 if sample is tumor
+            |t-cell/helper :
+            |t-cell/killer :
+            |knows: 0 if sample is unknwn, 1 if sample is knwn (default)
+            |sequence of image paths shown
+            |(see self.import_labels for matrix initialization)
         '''
-        self.knows = [1 for x in self.queues[0]]
-        self.labels = [0 for x in self.queues[0] ]
-        #self.labels = [ [0 for x in self.queues[0], [0 for x in self.queues[0]
-        #[0 for x in self.queues[0], [1 for x in self.queues[0] ]
-
-
 
         self.zooms = [1 for x in self.queues[0] ]
 
         self.image_dim = [435, 335] # optimal display dim: [w = 1.3h, h]
         self.pg = 0
         self.last_pg = ''
-        # points to UI elements to set images/ checks
-        self.label_check_pointers = []
-        self.know_check_pointers = []
+        # points to UI elements to set images/ radio buttons
+        self.radio_button_pointers = []
         self.image_pointers = []
         self.caption_pointers = []
-
+        self.radio_variable_pointers =[]
         window.bind("<Key>", lambda event: self.key(event) )
 
         self.label_storage_path = os.getcwd() + '/' + 'labels.txt'
         self.populate()
         self.import_labels()
+        print(self.zoom_queues[0] == self.labels[4])
 
     def key(self, event):
         window.focus_set()
@@ -74,14 +73,17 @@ class MainApplication(Frame):
         checkbuttons_numpad = ['q', 'w', 'e', 'a', 's', 'd', 'z', 'x', 'c']
         if event.char in checkbuttons_numpad:
             position = checkbuttons_numpad.index(event.char)
-            print(self.queue_pos - 9 + position)
+            sample_position = self.queue_pos - 9 + position
 
-            self.labels[self.queue_pos - 9 + position] = 1 - self.labels[
-            self.queue_pos- 9 + position]
+            def cycle(sample_position):
+                sample_cur_label = self._retrieve_label_index(sample_position)
+                sample_next_label = (sample_cur_label + 1) % 4
+                self._write_label_index(sample_position, sample_next_label)
 
+            cycle(sample_position)
             self.update()
 
-    def fill_queues(self):#, path = zoom, zoom_path = zoom):
+    def fill_queues(self):
         self.queues = [[],[],[]]
         self.zoom_queues = [[],[],[]]
         color_orders = get_subdir(zoomed)
@@ -109,25 +111,21 @@ class MainApplication(Frame):
         imvar.pack(side = LEFT)
 
         input_panel = Frame(panel)
+        MODES = [
+        ("tumor", 0),
+        (" CD8+", 1),
+        (" CD4+", 2),
+        ("unknw", 3)]
+        v = IntVar()
+        v.set(3)
+        for text, mode in MODES:
+            b = Radiobutton(input_panel, text=text, variable=v, value=mode,
+            command = lambda: self.radio_button_write(b ,v) )
+            b.var = v
+            b.pack(side=TOP)
+            self.radio_button_pointers.append( b )
 
-        t_var = IntVar()
-        tumor= Checkbutton(
-        input_panel, text= 'tumor', variable = t_var, pady = 20, padx = 0,
-        command = lambda: self.check_write(
-        tumor))
-        tumor.var = t_var
-        tumor.pack(side = TOP )
-        self.label_check_pointers.append( tumor )
-
-        u_var = IntVar()
-        unknown= Checkbutton(
-        input_panel, text= 'unkwn', variable = u_var, pady = 20, padx = 0,
-        onvalue = 0, offvalue = 1,
-        command = lambda: self.check_write(unknown , array='knows'))
-        unknown.var = u_var
-        unknown.deselect()
-        unknown.pack(side = TOP )
-        self.know_check_pointers.append(unknown)
+        self.radio_variable_pointers.append(v)
 
         caption = Label(input_panel, pady=20, text= self.queues[0][self.queue_pos].split('/')[-1].split('_')[0] )
         caption.pack(side = BOTTOM)
@@ -136,7 +134,7 @@ class MainApplication(Frame):
         z_var = IntVar()
         zoom = Button(
         input_panel, text='zoom',
-        command = lambda: self.check_write(
+        command = lambda: self.zoom_record(
         zoom, image_var = imvar, array = 'zooms') )#, pady = 50, padx = 30)
         zoom.var = z_var
         zoom.pack(side = BOTTOM)
@@ -165,50 +163,47 @@ class MainApplication(Frame):
             self.last_visited = position
         return position
 
-    def uncheck_all(self):
-        for c in self.label_check_pointers:
-            c.deselect()
-        for d in self.know_check_pointers:
-            d.deselect()
+    def _retrieve_label_index(self, sample_index):
+        if sample_index >= len(self.queues[0]):
+            return
 
-    def read_check(self, pos = '', checkbutton = ''):
-        ''' select checkbuttons on a new page
+        for array in self.labels[:-1]:
+            if array[sample_index]:
+                return self.labels.index(array)
+
+    def read_to_radio(self, pos = '', checkbutton = ''):
+        ''' select radio buttons according to matrix
             :param pos: if given, checks UI box according to image position in queue
             :param button: if given, checks UI box according to box's location
         '''
-        if checkbutton:
-            pos = self.pos(checkbutton.var)
-        else:
-            checkbutton = self.label_check_pointers[pos % 9]
-            knows_checkbutton = self.know_check_pointers[pos % 9]
-        if pos < len(self.queues[0]):
-            # if unknwn button checked from prev page, check it now
-            if self.knows[pos] == 1:
-                knows_checkbutton.select()
-            # if tumor is checked from prev page, check it now
-            if self.labels[pos] == 1:
-                #print('checkbutton checked at', pos, self.labels[pos])
-                checkbutton.select()
+        for sample in range(  self.queue_pos - 9, self.queue_pos ):
+            radio_var_to_set = self.radio_variable_pointers[ sample % 9 ]
+            radio_var_to_set.set(self._retrieve_label_index(sample) )
 
-    def check_write(self, checkbutton, image_var = '', array = 'labels'):
-        ''' reads checkbutton states and writes them to self.knows, self.labels
-            :param checkbutton: box to get value from
-            :param image_var: if given, zoom image_var's image
-            :param array: determine which array to write to (self.knows, self.labels)
-        '''
-        edit_queue = eval('self.' + array)
-        pos = self.pos(checkbutton.var)
+    def _write_label_index(self, sample_position, selection):
+        #print(selection)
+        for ind in range(len(self.labels[:-1])):
+            if ind == selection:
+                self.labels[ind][sample_position] = 1
+            else:
+                self.labels[ind][sample_position] = 0
 
+    def radio_button_write(self, button, v):
+        button_position = self.radio_button_pointers.index(button)
+        sample_position = (button_position - (button_position % 4) ) //4
+        sample_position += self.queue_pos - 9
+        selection = v.get()
+        self._write_label_index( int(sample_position), int(selection) )
+
+    def zoom_record(self, button):
+        pos = self.pos(button.var)
         if image_var:
             # zoom is a button. Instead of reading state, manually 0/1 flip
-            edit_queue[ pos ] = 1 - edit_queue[ pos ]
-            self.zoom_func(image_var, pos, edit_queue[pos])
+            self.zooms[pos] = 1 - self.zooms[ pos ]
+            self.zoom_func(image_var, pos, self.zooms[pos])
             return
-        edit_queue[ pos ] = checkbutton.var.get()
-        #print(array, edit_queue, pos)
 
     def zoom_func(self, imvar, pos, zoom = 0):
-        print(zoom)
         if zoom:
             self.update_img( imvar, self.zoom_queues[self.color_order][pos] )
         else:
@@ -239,11 +234,9 @@ class MainApplication(Frame):
 
         elif next:
             if self.last_pg == self.pg:
-                #print(self.last_pg, self.pg)
                 return
             self.pg += 1
 
-        self.uncheck_all()
         blank = os.path.join(dir, '../data/util/pixel.png')
 
         self.queue_pos = self.pg * 9
@@ -252,11 +245,12 @@ class MainApplication(Frame):
                 if self.queue_pos >= len(self.queues[0]):
                     self.last_pg = self.pg
                     img_up_next = blank
+                    #print(self.queue_pos, len(self.queues[0]) )
                 else:
                     img_up_next = self.zoom_queues[self.color_order][self.queue_pos]
                 self.update_img(pointer, img_up_next )
                 # update checkbutton selections
-                self.read_check(pos = self.queue_pos, checkbutton = ''  )
+                self.read_to_radio(  )
                 # update captions
                 self.update_cap(self.caption_pointers[self.queue_pos % 9], img_up_next)
                 #print(self.queue_pos % 9, len(self.labels), self.queue_pos, self.labels[self.queue_pos])
@@ -309,35 +303,28 @@ class MainApplication(Frame):
         conclude_panel.pack(side=RIGHT)#, pady = 20)
 
     def export_labels(self):
-        label_dict = dict()
-        self.labels = [x if x != 0 else x - 1 for x in self.labels ]
-
-
-        #for i in range(self.last_visited+1):
-        #    label_dict[ self.queues[0][i] ] = self.labels[i] * self.knows[i]
-
         with open(self.label_storage_path, 'w') as f:
-            f.write( str(label_dict) )
+            f.write( repr(self.labels ) )
 
     def import_labels(self):
         if not os.path.isfile(self.label_storage_path):
-            with open(self.label_storage_path, 'w') as e:
-                e.write( 'dict()')
+            tumor_indicator_vect = [0 for x in self.queues[0]]
+            tcell_helper_indicator_vect = [0 for x in self.queues[0]]
+            tcell_killer_indicator_vect = [0 for x in self.queues[0]]
+            know_indicator_vect = [1 for x in self.queues[0] ]
+
+            self.labels = [ tumor_indicator_vect, tcell_helper_indicator_vect,
+            tcell_killer_indicator_vect, know_indicator_vect, self.zoom_queues[0] ]
+
+            self.export_labels()
 
         with open(self.label_storage_path, 'r') as f:
-            label_dict = eval(f.read())
+            self.labels = eval(f.read())
 
-        for i in range(len(self.queues[0])):
-            if self.queues[0][i] in label_dict.keys():
-                #print('pos at _ have value _ ', i, label_dict[self.queue[i]])
-                if label_dict[self.queues[0][i]] == 0:
-                    self.knows[i] = 0
-                if label_dict[self.queues[0][i]] == 1:
-                    self.labels[i] = 1
-                if label_dict[self.queues[0][i]] == -1:
-                    self.labels[i] = 0
-                if i < 9:
-                    self.read_check(pos = i)
+        # if current sample belongs on first page, tick box accordingly
+        for i in range(9):
+            self.read_to_radio(pos = i)
+
 if __name__== "__main__":
 
     dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
@@ -350,24 +337,6 @@ if __name__== "__main__":
 
     MainApplication(window).pack(side='top', fill = 'both', expand = True)
 
-
     window.mainloop()
 
 # TODO
-# color key
-# user chosen proteins
-# make zoom images
-
-
-
-
-
-
-# def gen_coord():
-#     grid = list(range(3))
-#     all_coordinates = grid*3
-#     i = -1
-#     for pos in all_coordinates:
-#         if pos == 0:
-#             i += 1
-#         yield pos, i
