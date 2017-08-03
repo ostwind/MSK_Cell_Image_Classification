@@ -46,7 +46,7 @@ class MainApplication(Frame):
         self.radio_variable_pointers =[]
         window.bind("<Key>", lambda event: self.key(event) )
 
-        self.label_storage_path = os.getcwd() + '/' + 'labels.txt'
+        self.label_storage_path = dir+ '/' + 'labels.txt'
         self.populate()
         self.import_labels()
         print(self.zoom_queues[0] == self.labels[4])
@@ -237,7 +237,7 @@ class MainApplication(Frame):
                 return
             self.pg += 1
 
-        blank = os.path.join(dir, '../data/util/pixel.png')
+        blank = os.path.join(dir, '../../data/util/pixel.png')
 
         self.queue_pos = self.pg * 9
         while self.queue_pos != (self.pg + 1) * 9:
@@ -327,9 +327,12 @@ class MainApplication(Frame):
 
 if __name__== "__main__":
 
-    dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
-    cropped = os.path.join(dir, '../data/cropped/')
-    zoomed = os.path.join(dir, '../data/zoomed/')
+    #dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
+    #cropped = os.path.join(dir, '../data/cropped/')
+    #zoomed = os.path.join(dir, '../data/zoomed/')
+    dir = os.path.dirname(__file__)
+    zoomed = os.path.join(dir, '../../data/zoomed/')
+    cropped = os.path.join(dir, '../../data/cropped/')
 
     window = Tk()
     window.geometry('2000x1000+0+0')
