@@ -1,6 +1,6 @@
-''' A modified mnist model from
-    https://github.com/ageron/handson-ml/blob/master/13_convolutional_neural_networks.ipynb
 '''
+'''
+
 from datetime import datetime
 now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
 root_logdir = 'tf_logs'
@@ -12,6 +12,7 @@ from sample_gen import inputs
 import tensorflow as tf
 from functools import partial
 import pickle
+#from deconv import unpool
 
 def reset_graph(seed=42):
     tf.reset_default_graph()
@@ -32,8 +33,6 @@ with tf.name_scope('input'):
     input_batch, input_labels_batch, input_fnames = tf.cond(training,
     lambda: (train_batch, train_labels_batch, train_fnames),
     lambda:(test_batch, test_labels_batch, test_fnames))
-    # check tf.cond doc to make sure lambda: True, lambda: False
-    #print(train_batch.get_shape(), train_labels_batch.get_shape())
 
 with tf.name_scope('batch_norm'):
     #data = tf.cond(am_testing, lambda:test_q, lambda:train_q)
@@ -42,48 +41,50 @@ with tf.name_scope('batch_norm'):
     momentum=batch_norm_momentum)
     dropout_rate = 0.5
 
-height = 50
-width = 50
-channels = 23
-n_inputs = height * width * channels
+def conv(input, fmaps, training, name, ksize = 3, stride = 1, pad = "SAME" ):
+    with tf.name_scope(name):
+        conv = tf.layers.conv2d(input, filters=fmaps, kernel_size=ksize,
+                                 strides=stride, padding=pad, name=name)
+        #print(name, conv.get_shape())
+        bn = tf.nn.elu(batch_norm_layer(conv))
+        hidden_drop = tf.layers.dropout(bn, dropout_rate, training=training)
+    return hidden_drop
+
+def pool(input, pool_fmaps, name, flatten = False,
+ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding = "VALID"):
+    with tf.name_scope(name):
+        pool = tf.nn.max_pool(input, ksize= ksize, strides=strides, padding= padding)
+        #print('pool3: ', pool3.get_shape())
+        if flatten:
+            pool = tf.reshape(pool, shape=[-1, pool_fmaps * 12 * 12])
+    return pool
 
 conv1_fmaps = 10
-conv1_ksize = 3
-conv1_stride = 1
-conv1_pad = "SAME"
-
 conv2_fmaps = 20
-conv2_ksize = 3
-conv2_stride = 1
-conv2_pad = "SAME"
-
 pool3_fmaps = conv2_fmaps
 
-n_fc1 = 1000
+conv4_fmaps = 40
+pool5_fmaps = conv4_fmaps
+
+hidden1_drop = conv(input_batch, conv1_fmaps, training, 'conv1',
+ksize = 5
+)
+hidden2_drop = conv(hidden1_drop, conv2_fmaps, training, 'conv2',
+)
+pool3_flat = pool(hidden2_drop, pool3_fmaps, 'pool3',
+)
+
+hidden4_drop = conv(pool3_flat, conv4_fmaps, training, 'conv4',
+)
+pool5_flat = pool(hidden4_drop, pool5_fmaps, 'pool5',
+flatten = True
+)
+
+n_fc1 = 200
 n_outputs = 3
 
-with tf.name_scope('conv1'):
-    conv1 = tf.layers.conv2d(input_batch, filters=conv1_fmaps, kernel_size=conv1_ksize,
-                             strides=conv1_stride, padding=conv1_pad, name="conv1")
-    #print('conv1: ', conv1.get_shape())
-    bn1 = tf.nn.elu(batch_norm_layer(conv1))
-    hidden1_drop = tf.layers.dropout(bn1, dropout_rate, training=training)
-
-with tf.name_scope('conv2'):
-    conv2 = tf.layers.conv2d(hidden1_drop, filters=conv2_fmaps, kernel_size=conv2_ksize,
-                             strides=conv2_stride, padding=conv2_pad, name="conv2")
-    #print('conv2: ', conv2.get_shape())
-    bn2 = tf.nn.elu(batch_norm_layer(conv2))
-    hidden2_drop = tf.layers.dropout(bn2, dropout_rate, training=training)
-
-with tf.name_scope("pool3"):
-    pool3 = tf.nn.max_pool(hidden2_drop, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="VALID")
-    #print('pool3: ', pool3.get_shape())
-    pool3_flat = tf.reshape(pool3, shape=[-1, pool3_fmaps * 25 * 25])
-    #print('pool_flat: ', pool3_flat.get_shape())
-
 with tf.name_scope("fc1"):
-    fc1 = tf.layers.dense(pool3_flat, n_fc1, name="fc1")#, activation = tf.nn.elu)
+    fc1 = tf.layers.dense(pool5_flat, n_fc1, name="fc1")#, activation = tf.nn.elu)
     bn3 = tf.nn.elu(batch_norm_layer(fc1))
     #print('fc1: ', fc1.get_shape())
 
@@ -91,8 +92,7 @@ with tf.name_scope("output"):
     logits_before_bn = tf.layers.dense(bn3, n_outputs, name="output")
     logits = batch_norm_layer(logits_before_bn)
     #print('logits: ', logits.get_shape())
-    Y_proba = tf.nn.softmax(logits, name="Y_proba")
-
+    #Y_proba = tf.nn.softmax(logits, name="Y_proba")
     preds  = tf.cast( tf.argmax(logits, 1), tf.int32 )
     mislabeled = tf.not_equal( preds, input_labels_batch )
     mislabeled_filenames = tf.cast( tf.boolean_mask( input_fnames, mislabeled ), tf.string)
@@ -128,6 +128,24 @@ misclassified_writer = tf.summary.FileWriter(logdir + 'misclassified', tf.get_de
 
 write_op = tf.summary.merge_all() # put into session.run!
 
+def record(step, epoch, n_epochs):
+    if step % 200 == 0: # 8 updates per epoch
+        #if i % 30 == 0:
+        #    print(epoch, step, acc_train)
+        summary_str = loss_record.eval()
+        file_writer.add_summary(summary_str, step)
+
+        acc_train = acc_record.eval(feed_dict = {training: True}  )
+        train_acc_writer.add_summary(acc_train, step)
+
+        acc_test = acc_record.eval(feed_dict = { training: False} )
+        test_acc_writer.add_summary(acc_test, step)
+
+    if epoch == n_epochs -1: # write the very last batch of misclassified
+        misclass = misclassified_record.eval(feed_dict = { training: False} )
+        misclassified_writer.add_summary(misclass, step)
+        #misclassified_writer.close()
+
 def train():
     with tf.Session() as sess:
         init.run()
@@ -137,38 +155,12 @@ def train():
         step = 0
         for epoch in range(n_epochs):
             for i in range(107000//64):
-                if step % 200 == 0: # 8 updates per epoch
-                    #if i % 30 == 0:
-                    #    print(epoch, step, acc_train)
-                    summary_str = loss_record.eval()
-                    file_writer.add_summary(summary_str, step)
-
-                    acc_train = acc_record.eval(feed_dict = {training: True}  )
-                    train_acc_writer.add_summary(acc_train, step)
-
-                    acc_test = acc_record.eval(feed_dict = { training: False} )
-                    test_acc_writer.add_summary(acc_test, step)
-
-                    misclass = misclassified_record.eval(feed_dict = { training: False} )
-                    misclassified_writer.add_summary(misclass, step)
-
+                record(step, epoch, n_epochs)
                 _, loss_val = sess.run(
                 [training_op, write_op], feed_dict={training: True} )
-
                 step += 1
 
             save_path = saver.save(sess, "./saved_model")
     file_writer.close()
+
 train()
-
-#def test():
-
-
-#    with tf.name_scope('validation'):
-#        test_image, test_label = inputs(training = False)
-
-#    mislabeled_samples = set()
-    #with tf.Session() as sess:
-    #    saver.restore(sess, './saved_model')
-#    with open('mislabeled.p', 'wb') as fp:
-#        pickle.dump(list(mislabeled_samples), fp)

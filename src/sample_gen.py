@@ -215,24 +215,18 @@ def inputs(input_directory, batch_size = 64, num_epochs = None):
     batch_size = batch_size, capacity = capacity,
     min_after_dequeue = min_after_dequeue, allow_smaller_final_batch = True)
 
-    #print(label_batch.get_shape())
     label_batch = tf.reshape(label_batch, shape=[-1])
-    #print(label_batch.get_shape())
     return example_batch, label_batch, fname_batch
 
 if __name__ == '__main__':
-
-    for i in range(5):#in inputs(test_path):
-        print(inputs(test_path))
-
-    #empty_dir(train_path)
-    #empty_dir(test_path)
+    empty_dir(train_path)
+    empty_dir(test_path)
 
     # generate spotX.csv from /data/cell_metadata.csv
 
-    # for i in [2, 3, 4, 5]:
-    #     spot = pd.read_csv('spot%s.csv' %(i))
-    #     modified_spot = spot.loc[(spot['Marker 8 Intensity'] < 12) & (spot['Marker 8 Intensity'] > 8)]
-    #     #modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] > 12) & (spot5['Marker 8 Intensity'] < 8)]
-    #     #print(spot['Marker 8 Positive'].value_counts())
-    #     gen_tensors(i, original_imgs_path, train_path, test_path, spot)
+    for i in [2, 3, 4, 5]:
+        spot = pd.read_csv('spot%s.csv' %(i))
+        modified_spot = spot.loc[(spot['Marker 8 Intensity'] < 12) & (spot['Marker 8 Intensity'] > 8)]
+        #modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] > 12) & (spot5['Marker 8 Intensity'] < 8)]
+        #print(spot['Marker 8 Positive'].value_counts())
+        gen_tensors(i, original_imgs_path, train_path, test_path, spot)

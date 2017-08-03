@@ -5,6 +5,8 @@ try:
 except ImportError:
     from Tkinter import *
 from PIL import ImageTk, Image
+from functools import partial
+
 
 def get_subdir(a_dir):
     return [name for name in os.listdir(a_dir)
@@ -17,7 +19,6 @@ class MainApplication(Frame):
         self.color_order = 0
         self.queue_pos = 0
         self.last_visited = 0
-
         self.fill_queues()
 
         #self.queue = self.queue[:100]
@@ -29,6 +30,11 @@ class MainApplication(Frame):
         '''
         self.knows = [1 for x in self.queues[0]]
         self.labels = [0 for x in self.queues[0] ]
+        #self.labels = [ [0 for x in self.queues[0], [0 for x in self.queues[0]
+        #[0 for x in self.queues[0], [1 for x in self.queues[0] ]
+
+
+
         self.zooms = [1 for x in self.queues[0] ]
 
         self.image_dim = [435, 335] # optimal display dim: [w = 1.3h, h]
@@ -40,9 +46,40 @@ class MainApplication(Frame):
         self.image_pointers = []
         self.caption_pointers = []
 
+        window.bind("<Key>", lambda event: self.key(event) )
+
         self.label_storage_path = os.getcwd() + '/' + 'labels.txt'
         self.populate()
         self.import_labels()
+
+    def key(self, event):
+        window.focus_set()
+        #print(event)
+        #print(repr(event.char))
+        if event.keycode == 114:
+            #print('--> right arrow')
+            self.update(next=True)
+
+        if event.keycode == 113:
+            #print('<-- left arrow')
+            self.update(prev=True)
+
+        if event.keycode == 111:
+            #print('^ up arrow')
+            self.toggle_color()
+
+        #if event.keycode == 116:
+        #    print('v down arrow')
+
+        checkbuttons_numpad = ['q', 'w', 'e', 'a', 's', 'd', 'z', 'x', 'c']
+        if event.char in checkbuttons_numpad:
+            position = checkbuttons_numpad.index(event.char)
+            print(self.queue_pos - 9 + position)
+
+            self.labels[self.queue_pos - 9 + position] = 1 - self.labels[
+            self.queue_pos- 9 + position]
+
+            self.update()
 
     def fill_queues(self):#, path = zoom, zoom_path = zoom):
         self.queues = [[],[],[]]
@@ -56,7 +93,7 @@ class MainApplication(Frame):
                 i = 0
                 for f in files:
                     i += 1
-                    if '.png' in f and i < 100:
+                    if '.png' in f and i < 101:
                         #print(order_subdir + '/' +  f)
                         self.queues[c].append(order_subdir + '/' +  f)
                         self.zoom_queues[c].append(zoomed_order_subdir + '/' + f )
@@ -146,7 +183,7 @@ class MainApplication(Frame):
             knows_checkbutton = self.know_check_pointers[pos % 9]
         if pos < len(self.queues[0]):
             # if unknwn button checked from prev page, check it now
-            if self.knows[pos] == 0:
+            if self.knows[pos] == 1:
                 knows_checkbutton.select()
             # if tumor is checked from prev page, check it now
             if self.labels[pos] == 1:
@@ -202,11 +239,12 @@ class MainApplication(Frame):
 
         elif next:
             if self.last_pg == self.pg:
+                #print(self.last_pg, self.pg)
                 return
             self.pg += 1
 
         self.uncheck_all()
-        blank = os.path.join(dir, 'data/util/pixel.png')
+        blank = os.path.join(dir, '../data/util/pixel.png')
 
         self.queue_pos = self.pg * 9
         while self.queue_pos != (self.pg + 1) * 9:
@@ -217,30 +255,33 @@ class MainApplication(Frame):
                 else:
                     img_up_next = self.zoom_queues[self.color_order][self.queue_pos]
                 self.update_img(pointer, img_up_next )
+                # update checkbutton selections
                 self.read_check(pos = self.queue_pos, checkbutton = ''  )
+                # update captions
                 self.update_cap(self.caption_pointers[self.queue_pos % 9], img_up_next)
                 #print(self.queue_pos % 9, len(self.labels), self.queue_pos, self.labels[self.queue_pos])
                 self.queue_pos += 1
 
-    def toggle_color(self, button):
+    def toggle_color(self):
         self.color_order = (self.color_order + 1) % 3
         cur_color = get_subdir(zoomed)[self.color_order]
         cur_color =  '\n'.join(cur_color.split('_'))
-        button.config(text = cur_color)
+        self.toggle_.config(text = cur_color)
         self.update()
 
     def populate( self, imgs_per_page = 9 ):
         gallery_panel = Frame(window)
+
         for i in range(3):
             self.place_row(gallery_panel)
         gallery_panel.pack(side = LEFT)
 
         conclude_panel = Frame(window)
 
-        toggle_ = Button(
+        self.toggle_ = Button(
         conclude_panel, text='change \n color \n scheme', pady = 50, padx = 45,
-        command = lambda: self.toggle_color( toggle_ ))
-        toggle_.pack(side = TOP)
+        command = lambda: self.toggle_color( ))
+        self.toggle_.pack(side = TOP)
 
         prev_ = Button(
         conclude_panel, text='prev', pady = 50, padx = 50,
@@ -270,8 +311,11 @@ class MainApplication(Frame):
     def export_labels(self):
         label_dict = dict()
         self.labels = [x if x != 0 else x - 1 for x in self.labels ]
-        for i in range(self.last_visited+1):
-            label_dict[ self.queues[0][i] ] = self.labels[i] * self.knows[i]
+
+
+        #for i in range(self.last_visited+1):
+        #    label_dict[ self.queues[0][i] ] = self.labels[i] * self.knows[i]
+
         with open(self.label_storage_path, 'w') as f:
             f.write( str(label_dict) )
 
@@ -297,14 +341,15 @@ class MainApplication(Frame):
 if __name__== "__main__":
 
     dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
-    cropped = os.path.join(dir, 'data/cropped/')
-    zoomed = os.path.join(dir, 'data/zoomed/')
+    cropped = os.path.join(dir, '../data/cropped/')
+    zoomed = os.path.join(dir, '../data/zoomed/')
 
     window = Tk()
     window.geometry('2000x1000+0+0')
     window.title("Tumor Classification UI v0.0")
 
     MainApplication(window).pack(side='top', fill = 'both', expand = True)
+
 
     window.mainloop()
 
