@@ -14,7 +14,7 @@ import glob
 def take_first_image(input_directory, output_directory):
     for subdir, dirs, files in os.walk(input_directory):
         for f in files:
-            if '.tif' in f:
+            if '.tif' in f : #and '005' in f
                 with TiffFile(str(input_directory) + f) as tif:
                     matrix = tif[0].asarray()
                     im = Image.fromarray(matrix)
@@ -31,9 +31,8 @@ def colorized(file_paths, output_path, prepend = ''):
     for path in file_paths:
         matrix_stack.append( np.array(Image.open(path)) )
         img_name += path.split('/')[-1].split('_')[0] + '_'
-
-
-    weights = [256-200, 256-175, 256+50]
+    #256
+    weights = [150, 200, 150]
     RGB = np.zeros((matrix_stack[0].shape[0], matrix_stack[0].shape[1], 3), "uint8")
 
     for i in range(len(matrix_stack)):
@@ -70,6 +69,7 @@ output_directory, zoomed_output_directory, total_metadata
         metadata = total_metadata[ total_metadata['Image Location'].str.contains( 'Spot' + spot + '_1') ]
         #print(all_spots)
         spot_image = [x for x in all_spots if spot == x.split('_')[0]][0]
+        #all_spots[0]
         #print(metadata.shape)
 
         count = 0
@@ -88,8 +88,8 @@ output_directory, zoomed_output_directory, total_metadata
             if 1:
                 count += 1
                 c = center([xmin, ymin, xmax, ymax])
-                save_name = '%s_cd4_%s|%.1f_sox10_%s|%.1f.png' %(
-                cell_id, cd4_pos, cd4_intensity, sox10_pos, sox10_intensity)
+                save_name = '%s_cd4_%.1f_sox10_%.1f.png' %(
+                cell_id, cd4_pos, sox10_pos)
 
                 draw.rectangle([xmin - 10, ymin - 10, xmax + 10, ymax + 10], outline = 'red')
 
@@ -110,26 +110,30 @@ def gen_samples(dir_lookup, metadata, rgb_orders = [['SOX10', 'CD4', 'S001']]):
 
     #combine three protein markers of the entire view
     # WARNING: ARE THERE MULTIPLE SPOTS? YES
-    files = glob.glob( dir_lookup['original'] + '*')
+    file_paths = glob.glob( dir_lookup['original'] + '*')
 
-    i = 1
+    #i = 1
     # sort and select paths found in rgb_order list
     for order in rgb_orders:
-
         marker_subset = [ f for i in range(3) for f in file_paths if order[i] in f ]
         colored_file_name = colorized( marker_subset, output_path = dir_lookup['colored'] )
         print('%s colorized' %(colored_file_name))
 
         draw_box(input_directory = dir_lookup['colored'] + colored_file_name,
         output_directory = dir_lookup['cropped'] + '_'.join(order),
-        zoomed_output_directory = dir_lookup['zoomed'] + '_'.join(order), metadata = metadata)
+        zoomed_output_directory = dir_lookup['zoomed'] + '_'.join(order), total_metadata = metadata)
 
-        i += 1
+        #i += 1
 
 def make_dir_dictionary(rgb_orders, real_original_loc):
     dir_lookup =  { 'real_original':str(real_original_loc), 'original':'', 'colored':'',
     'cropped' : '', 'zoomed': ''  }
     dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
+
+    dir = os.path.dirname(__file__)
+    dir = os.path.join(dir, '../../data/')
+    #cropped = os.path.join(self.dir, '../../data/cropped/')
+
     if not os.path.exists(dir):
         os.makedirs(dir)
 
@@ -152,15 +156,21 @@ def make_dir_dictionary(rgb_orders, real_original_loc):
 
 if __name__ == '__main__':
 
-    rgb_orders = [['SOX10', 'CD4', 'S001'], [ 'MELANA', 'CD8', 'S001'], ['LCA', 'CD3','S001']]
+    rgb_orders = [['SOX10', 'CD3', 'S001'], [ 'CD8', 'CD3', 'S001'], ['CD8', 'CD3','CD4']]
     dir_lookup = make_dir_dictionary(rgb_orders, '/home/lihan/Documents/image/data/real_original/')
 
     #take_first_image(dir_lookup['real_original'], dir_lookup['original'])
 
+    df = pd.read_csv('../data/cell_metadata.csv')
+    bad_cases = pickle.load( open('mislabeled.p', 'rb'))
+    bad_cases = [int(x) for x in bad_cases]
+    bad_df = df[ df['Object Id'].isin(bad_cases) ]
+
+
     spot5 = pd.read_csv('spot5.csv')
     modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] < 11.8) & (spot5['Marker 8 Intensity'] > 9.1)]
     #intensity range leads to 892 label 1 samples, 880 label 0 samples
-    gen_samples(dir_lookup, rgb_orders = rgb_orders, metadata = modified_spot5)#'SOX10_AFRemoved_pyr16_spot_005.png')
+    gen_samples(dir_lookup, rgb_orders = rgb_orders, total_metadata = bad_df)#'SOX10_AFRemoved_pyr16_spot_005.png')
 
 ''' \\ -x, -y
     (x1, y1) --------

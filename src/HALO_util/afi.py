@@ -5,6 +5,8 @@ try:
 except ImportError:
     from Tkinter import *
 
+# /home/lihan/Documents/image/HALO_data/S11_27456_1_1
+
 def collect_spots(path):
     # collect filenames at this path by spot
     spot_dict = dict()
@@ -63,12 +65,19 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
     # next code block to sort channel names alphabetically, since S001-> DAPI1
     # create channel names linked w/ tif_name, sort array,
     channel_names_to_sort = []
-
+    file_names = []
     for tif_name in tif_ledger[spot]:
-        channel_names_to_sort.append( [channel_name(tif_name), tif_name] )
+        channel_names_to_sort.append( channel_name(tif_name) )
+        file_names.append(tif_name)
+
+    # duplicate channel name check
+    if len(channel_names_to_sort) != len(set(channel_names_to_sort)):
+        update_usr(listbox, 'files with duplicate channel names at %s, skipped! ' %(dirpath) )
+        return False
+
     channel_names_to_sort.sort(key=lambda x: x[0])
 
-    for c_name, tif_name in channel_names_to_sort:
+    for c_name, tif_name in zip(channel_names_to_sort, file_names):
         image_child = ET.SubElement(root, "Image")
 
         path_child = ET.SubElement(
@@ -99,11 +108,11 @@ def traverse(start_dir, mask_dir, num_stains):
         dirpath = os.path.join(dirpath, '')
         tif_ledger = collect_spots(dirpath)
         for spot in tif_ledger.keys():
-                if len(tif_ledger[spot]) != int(num_stains):
+                if num_stains and len(tif_ledger[spot]) != int(num_stains):
                     update_usr(listbox, 'Spot %s at %s has %s .tif files, no .afi written' %(spot, dirpath, len(tif_ledger[spot])))
                     update_usr(listbox, '!! no .afi written !!' )
                     continue
-                if  len(tif_ledger[spot]) == int(num_stains):
+                if  not num_stains:
                     update_usr(listbox, 'Spot %s at %s has %s .tif files' %(spot, dirpath, len(tif_ledger[spot])))
 
                 write_afi(dirpath, mask_dir, spot, tif_ledger)
@@ -130,7 +139,6 @@ bot_label.config(font=('Courier',12))
 
 e1 = Entry(master, textvariable=1, width=80)
 e1.grid(row=0, column=1, pady = 20, padx = 10)
-
 
 e2 = Entry(master, width = 80)
 e2.grid(row = 1, column = 1, pady = 20, padx = 10)
@@ -170,12 +178,10 @@ def show_entry_fields(listbox):
    '''
    path = os.path.join(e1.get(), '')
    if not path_exists(path):
-       print(path)
        update_usr(listbox, 'Not a valid directory path')
        return
 
    mask_dir = e2.get() #os.path.join(e2.get(), '')
-   print(mask_dir)
 
    num_stains = (e3.get())
    if num_stains and not num_stains.isdigit():

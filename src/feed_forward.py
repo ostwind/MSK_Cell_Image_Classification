@@ -12,7 +12,6 @@ from sample_gen import inputs
 import tensorflow as tf
 from functools import partial
 import pickle
-#from deconv import unpool
 
 def reset_graph(seed=42):
     tf.reset_default_graph()
@@ -35,7 +34,6 @@ with tf.name_scope('input'):
     lambda:(test_batch, test_labels_batch, test_fnames))
 
 with tf.name_scope('batch_norm'):
-    #data = tf.cond(am_testing, lambda:test_q, lambda:train_q)
     batch_norm_momentum = 0.9
     batch_norm_layer = partial(tf.layers.batch_normalization, training=training,
     momentum=batch_norm_momentum)
@@ -67,21 +65,16 @@ conv4_fmaps = 40
 pool5_fmaps = conv4_fmaps
 
 hidden1_drop = conv(input_batch, conv1_fmaps, training, 'conv1',
-ksize = 5
-)
-hidden2_drop = conv(hidden1_drop, conv2_fmaps, training, 'conv2',
-)
-pool3_flat = pool(hidden2_drop, pool3_fmaps, 'pool3',
-)
+ksize = 5)
+hidden2_drop = conv(hidden1_drop, conv2_fmaps, training, 'conv2',)
+pool3_flat = pool(hidden2_drop, pool3_fmaps, 'pool3',)
 
-hidden4_drop = conv(pool3_flat, conv4_fmaps, training, 'conv4',
-)
+hidden4_drop = conv(pool3_flat, conv4_fmaps, training, 'conv4',)
 pool5_flat = pool(hidden4_drop, pool5_fmaps, 'pool5',
-flatten = True
-)
+flatten = True )
 
 n_fc1 = 200
-n_outputs = 3
+num_classes = 3
 
 with tf.name_scope("fc1"):
     fc1 = tf.layers.dense(pool5_flat, n_fc1, name="fc1")#, activation = tf.nn.elu)
@@ -89,7 +82,7 @@ with tf.name_scope("fc1"):
     #print('fc1: ', fc1.get_shape())
 
 with tf.name_scope("output"):
-    logits_before_bn = tf.layers.dense(bn3, n_outputs, name="output")
+    logits_before_bn = tf.layers.dense(bn3, num_classes, name="output")
     logits = batch_norm_layer(logits_before_bn)
     #print('logits: ', logits.get_shape())
     #Y_proba = tf.nn.softmax(logits, name="Y_proba")
@@ -112,6 +105,22 @@ with tf.name_scope("eval"):
     correct = tf.nn.in_top_k(logits, input_labels_batch, 1)
     accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
 
+    # Compute a per-batch confusion
+    batch_confusion = tf.confusion_matrix(input_labels_batch, preds,
+                                             num_classes=num_classes,
+                                             name='batch_confusion')
+    # Create an accumulator variable to hold the counts
+    confusion = tf.Variable( tf.zeros( [num_classes, num_classes],
+                                      dtype=tf.int32 ),
+                                      name='confusion' )
+    # Create the update op for doing a "+=" accumulation on the batch
+    confusion_update = confusion.assign( confusion + batch_confusion )
+    # Cast counts to float so tf.summary.image renormalizes to [0,255]
+    confusion_image = tf.reshape( tf.cast( confusion, tf.float32), [1, num_classes, num_classes, 1])
+
+    test_op = tf.group(confusion_update)
+    c_matrix = tf.summary.image('confusion',confusion_image)
+
 with tf.name_scope("init_and_save"):
     init = tf.global_variables_initializer()
     saver = tf.train.Saver()
@@ -128,8 +137,8 @@ misclassified_writer = tf.summary.FileWriter(logdir + 'misclassified', tf.get_de
 
 write_op = tf.summary.merge_all() # put into session.run!
 
-def record(step, epoch, n_epochs):
-    if step % 200 == 0: # 8 updates per epoch
+def record(sess, step, epoch, n_epochs):
+    if step % 100 == 0: # 8 updates per epoch
         #if i % 30 == 0:
         #    print(epoch, step, acc_train)
         summary_str = loss_record.eval()
@@ -141,7 +150,14 @@ def record(step, epoch, n_epochs):
         acc_test = acc_record.eval(feed_dict = { training: False} )
         test_acc_writer.add_summary(acc_test, step)
 
-    if epoch == n_epochs -1: # write the very last batch of misclassified
+    if epoch == n_epochs -1: # write misclassified test samples in the last epoch
+        # update confusion matrix: sess -> test_op -> confusion_update -> assign
+
+        sess.run(test_op, feed_dict={training: False})
+        print(confusion.eval())
+        c_matrix_evaled = c_matrix.eval(feed_dict = {training: False})
+        misclassified_writer.add_summary( c_matrix_evaled, step )
+
         misclass = misclassified_record.eval(feed_dict = { training: False} )
         misclassified_writer.add_summary(misclass, step)
         #misclassified_writer.close()
@@ -155,7 +171,7 @@ def train():
         step = 0
         for epoch in range(n_epochs):
             for i in range(107000//64):
-                record(step, epoch, n_epochs)
+                record(sess, step, epoch, n_epochs)
                 _, loss_val = sess.run(
                 [training_op, write_op], feed_dict={training: True} )
                 step += 1
