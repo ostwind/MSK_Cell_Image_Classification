@@ -25,10 +25,12 @@ train_path = os.path.join(dir, 'tensors/')
 test_path = os.path.join(dir, 'test_set/')
 
 with tf.name_scope('input'):
+    # two separate queues
     train_batch, train_labels_batch, train_fnames = inputs(train_path)
-    test_batch, test_labels_batch, test_fnames = inputs(test_path)
+    test_batch, test_labels_batch, test_fnames = inputs(test_path, batch_size = 192)
     training = tf.placeholder_with_default(True, shape=(), name='training')
 
+    # batch to feed depends on training / not training (relevant for BN + DO)
     input_batch, input_labels_batch, input_fnames = tf.cond(training,
     lambda: (train_batch, train_labels_batch, train_fnames),
     lambda:(test_batch, test_labels_batch, test_fnames))
@@ -53,8 +55,8 @@ ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding = "VALID"):
     with tf.name_scope(name):
         pool = tf.nn.max_pool(input, ksize= ksize, strides=strides, padding= padding)
         #print('pool3: ', pool3.get_shape())
-        if flatten:
-            pool = tf.reshape(pool, shape=[-1, pool_fmaps * 12 * 12])
+        if flatten: # pool_fmaps = pool5_fmaps = conv4_fmaps = 40
+            pool = tf.reshape(pool, shape=[-1, pool_fmaps * 7 * 7])
     return pool
 
 conv1_fmaps = 10
@@ -74,7 +76,7 @@ pool5_flat = pool(hidden4_drop, pool5_fmaps, 'pool5',
 flatten = True )
 
 n_fc1 = 200
-num_classes = 3
+num_classes = 8
 
 with tf.name_scope("fc1"):
     fc1 = tf.layers.dense(pool5_flat, n_fc1, name="fc1")#, activation = tf.nn.elu)
@@ -105,7 +107,7 @@ with tf.name_scope("eval"):
     correct = tf.nn.in_top_k(logits, input_labels_batch, 1)
     accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
 
-    # Compute a per-batch confusion
+    # Compute a per-batch confusion matrix
     batch_confusion = tf.confusion_matrix(input_labels_batch, preds,
                                              num_classes=num_classes,
                                              name='batch_confusion')
@@ -138,7 +140,7 @@ misclassified_writer = tf.summary.FileWriter(logdir + 'misclassified', tf.get_de
 write_op = tf.summary.merge_all() # put into session.run!
 
 def record(sess, step, epoch, n_epochs):
-    if step % 100 == 0: # 8 updates per epoch
+    if step % 200 == 0: # 8 updates per epoch
         #if i % 30 == 0:
         #    print(epoch, step, acc_train)
         summary_str = loss_record.eval()
@@ -150,27 +152,35 @@ def record(sess, step, epoch, n_epochs):
         acc_test = acc_record.eval(feed_dict = { training: False} )
         test_acc_writer.add_summary(acc_test, step)
 
-    if epoch == n_epochs -1: # write misclassified test samples in the last epoch
-        # update confusion matrix: sess -> test_op -> confusion_update -> assign
+        if epoch == n_epochs -1: # write misclassified test samples in the last epoch
+            # update confusion matrix: sess -> test_op -> confusion_update -> assign
 
-        sess.run(test_op, feed_dict={training: False})
-        print(confusion.eval())
-        c_matrix_evaled = c_matrix.eval(feed_dict = {training: False})
-        misclassified_writer.add_summary( c_matrix_evaled, step )
+            sess.run(test_op, feed_dict={training: False})
+            print(confusion.eval())
+            c_matrix_evaled = c_matrix.eval(feed_dict = {training: False})
+            misclassified_writer.add_summary( c_matrix_evaled, step )
 
-        misclass = misclassified_record.eval(feed_dict = { training: False} )
-        misclassified_writer.add_summary(misclass, step)
-        #misclassified_writer.close()
+            misclass = misclassified_record.eval(feed_dict = { training: False} )
+            misclassified_writer.add_summary(misclass, step)
+            #misclassified_writer.close()
 
-def train():
+training_set_size = len([name for name in os.listdir(train_path) if os.path.isfile(train_path + name)])
+#print(train_path)
+
+print(training_set_size)
+
+def train( restore = False):
+    n_epochs = 4
     with tf.Session() as sess:
         init.run()
-        #saver.restore(sess, './saved_model')
-        n_epochs = 4
+
+        if restore:
+            saver.restore(sess, './saved_model')
+
         tf.train.start_queue_runners(sess=sess)
         step = 0
         for epoch in range(n_epochs):
-            for i in range(107000//64):
+            for i in range(training_set_size // 64):
                 record(sess, step, epoch, n_epochs)
                 _, loss_val = sess.run(
                 [training_op, write_op], feed_dict={training: True} )
