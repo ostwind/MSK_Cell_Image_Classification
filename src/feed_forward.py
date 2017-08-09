@@ -8,7 +8,7 @@ logdir = '{}/run-{}/'.format(root_logdir, now)
 
 import numpy as np
 import os
-from sample_gen import inputs
+from sample_feed import inputs
 import tensorflow as tf
 from functools import partial
 import pickle
@@ -76,7 +76,7 @@ pool5_flat = pool(hidden4_drop, pool5_fmaps, 'pool5',
 flatten = True )
 
 n_fc1 = 200
-num_classes = 8
+num_classes = 6
 
 with tf.name_scope("fc1"):
     fc1 = tf.layers.dense(pool5_flat, n_fc1, name="fc1")#, activation = tf.nn.elu)
@@ -87,10 +87,16 @@ with tf.name_scope("output"):
     logits_before_bn = tf.layers.dense(bn3, num_classes, name="output")
     logits = batch_norm_layer(logits_before_bn)
     #print('logits: ', logits.get_shape())
-    #Y_proba = tf.nn.softmax(logits, name="Y_proba")
+    Y_proba = tf.nn.softmax(logits, name="Y_proba")
     preds  = tf.cast( tf.argmax(logits, 1), tf.int32 )
     mislabeled = tf.not_equal( preds, input_labels_batch )
-    mislabeled_filenames = tf.cast( tf.boolean_mask( input_fnames, mislabeled ), tf.string)
+
+    Y_proba_str  = tf.as_string( Y_proba )
+    Y_list = [ tf.slice(Y_proba_str, [ 0, i ], [ -1, 1 ]   ) for i in range(num_classes) ]
+    #print(Y_list[0].get_shape())
+
+    Y_proba_str = Y_list[0] + Y_list[1] + Y_list[2] + Y_list[3] + Y_list[4] + Y_list[5]  #tf.add_n(Y_list) #tf.gather_nd(Y_proba, [[ [row] for row in range(65)  ]] )
+    mislabeled_filenames = tf.cast( tf.boolean_mask( Y_proba_str + input_fnames, mislabeled ), tf.string)
 
 with tf.name_scope('loss'): # once I mv this section from 'train', loss appears as loss_1 on tensorboard
     xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=input_labels_batch)
@@ -103,25 +109,27 @@ with tf.name_scope("train"):
     with tf.control_dependencies(extra_update_ops):
         training_op = optimizer.minimize(loss)
 
+num_classes_in_wild = 6
+
 with tf.name_scope("eval"):
     correct = tf.nn.in_top_k(logits, input_labels_batch, 1)
     accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
 
     # Compute a per-batch confusion matrix
     batch_confusion = tf.confusion_matrix(input_labels_batch, preds,
-                                             num_classes=num_classes,
+                                             num_classes=num_classes_in_wild,
                                              name='batch_confusion')
     # Create an accumulator variable to hold the counts
-    confusion = tf.Variable( tf.zeros( [num_classes, num_classes],
+    confusion = tf.Variable( tf.zeros( [num_classes_in_wild, num_classes_in_wild],
                                       dtype=tf.int32 ),
                                       name='confusion' )
     # Create the update op for doing a "+=" accumulation on the batch
     confusion_update = confusion.assign( confusion + batch_confusion )
     # Cast counts to float so tf.summary.image renormalizes to [0,255]
-    confusion_image = tf.reshape( tf.cast( confusion, tf.float32), [1, num_classes, num_classes, 1])
+    #confusion_image = tf.reshape( tf.cast( confusion, tf.float32), [1, num_classes, num_classes, 1])
 
     test_op = tf.group(confusion_update)
-    c_matrix = tf.summary.image('confusion',confusion_image)
+    #c_matrix = tf.summary.image('confusion',confusion_image)
 
 with tf.name_scope("init_and_save"):
     init = tf.global_variables_initializer()
@@ -157,8 +165,8 @@ def record(sess, step, epoch, n_epochs):
 
             sess.run(test_op, feed_dict={training: False})
             print(confusion.eval())
-            c_matrix_evaled = c_matrix.eval(feed_dict = {training: False})
-            misclassified_writer.add_summary( c_matrix_evaled, step )
+            #c_matrix_evaled = c_matrix.eval(feed_dict = {training: False})
+            #misclassified_writer.add_summary( c_matrix_evaled, step )
 
             misclass = misclassified_record.eval(feed_dict = { training: False} )
             misclassified_writer.add_summary(misclass, step)
@@ -166,8 +174,7 @@ def record(sess, step, epoch, n_epochs):
 
 training_set_size = len([name for name in os.listdir(train_path) if os.path.isfile(train_path + name)])
 #print(train_path)
-
-print(training_set_size)
+#print(training_set_size)
 
 def train( restore = False):
     n_epochs = 4

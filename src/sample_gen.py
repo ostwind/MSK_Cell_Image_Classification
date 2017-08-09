@@ -11,7 +11,6 @@ import numpy as np
 import os
 import pandas as pd
 from tifffile import TiffFile
-import tensorflow as tf
 import random
 import glob
 from random import shuffle
@@ -20,24 +19,30 @@ import itertools
 
 img_length = 30
 
+dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
+original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
+train_path = os.path.join(dir, 'tensors/')
+test_path = os.path.join(dir, 'test_set/')
+
+tif_files = glob.glob(original_imgs_path + '*')
+
 def tensor(spot, r):
     x1, y1, x2, y2 = r
-
     tensor = []
-    for subdir, dirs, files in os.walk(original_imgs_path):
-        files.sort()
-        for f in files:
-            # extract spot integer from filenames e.g. -filename-_spot_00X.tif
-            if spot ==  int(f.split('_')[-1].split('.')[0] ):
-                im = Image.open(original_imgs_path + f)
-                cell_im = im.crop( (x1, y1, x2, y2) )
-                cell_im = cell_im.convert(mode = 'F')
-                cell_im = cell_im.resize((img_length, img_length), Image.ANTIALIAS)
-                # approx normalization to ~0-10 range
-                cell_matrix = (np.array(cell_im))/255
-                tensor.append(cell_matrix)
+    for f in tif_files:
+        # extract spot integer from filenames e.g. -filename-_spot_00X.tif
+        if spot ==  int(f.split('_')[-1].split('.')[0] ):
+            im = Image.open(f)
+            cell_im = im.crop( (x1, y1, x2, y2) )
+            cell_im = cell_im.convert(mode = 'F')
+            cell_im = cell_im.resize((img_length, img_length), Image.ANTIALIAS)
+            # approx normalization to ~0-10 range
+            cell_matrix = (np.array(cell_im))/255
+            tensor.append(cell_matrix)
     tensor = np.array(tensor).astype(np.uint8).transpose()
+
     #tensor = normalize(tensor)
+    #print(tensor[:,:,0], tensor.shape)
     return tensor
 
 def rotate(tensor): # dont rotate if there are enough samples
@@ -61,154 +66,116 @@ def save(region, spot, cell_id, label, output_dir ):
         rotated_tensor.tofile(output_dir + filename)
         cell_orientation += 1
 
-def _good_dim_ratio(region, min_ratio = 0.5):
-    xmin, ymin, xmax, ymax = region
-    length, width = ymax - ymin, xmax - xmin
-    if length/width < min_ratio or width/length < min_ratio:
-        return False
-    return True
-
-def gen_tensors(spot, metadata):#input_directory, output_directory, test_directory, metadata):
-    input_directory = original_imgs_path
-    output_directory = train_path
-    test_directory = test_path
-
-    i = 0
-
-    s = np.random.uniform(0, 1, metadata.shape[0])
-    #print(metadata.shape)#input_directory, output_directory)
-    for index, row in metadata.iterrows():
-        xmin = metadata.ix[index,'XMin']
-        ymin = metadata.ix[index,'YMin']
-        xmax = metadata.ix[index,'XMax']
-        ymax = metadata.ix[index,'YMax']
-        # check dimension ratios are not too rectangular, but square
-        if not _good_dim_ratio( [xmin, ymin, xmax, ymax] ):
-            continue
-
-        cell_id = metadata.ix[index, 'Object Id']
-        cd4 = metadata.ix[index, 'Dye 3 Positive']
-        cd8 = metadata.ix[index, 'Dye 4 Positive']
-        cd20 = metadata.ix[index, 'Dye 6 Positive']
-
-        path_to_write = output_directory
-        if s[i] < 0.3: # train/test split at 70/30
-            path_to_write = test_directory
-        # convert from binary indicator vec to dec for tensorflow class input
-        label = str(cd4)+ str(cd8) + str(cd20)
-        label = int(label, 2)
-
-        save( [xmin, ymin, xmax, ymax], int(spot),
-        str(spot) + str(cell_id), label, path_to_write)
-
-        i += 1
-        if i % 2000 == 0:
-            print('files done ', i, 'spot: ', spot)
-
-''' SAMPLE QUEUE GENERATION AND DEQUEUE FOR TF model.py
-    read_my_data <= inputs (form queues of ImageRecord objects)
-'''
-
-def read_my_data(filename_queue):
-
-    class ImageRecord(object):
-        def __init__(self):
-            # Dimensions of the images in the dataset.
-            self.height = 30
-            self.width = 30
-            self.depth = 32
-
-    result = ImageRecord()
-    label_bytes = 1
-    image_bytes = result.height * result.width * result.depth
-    record_bytes = label_bytes + image_bytes
-    assert record_bytes == (30*30*32)+1
-
-      # Read a record, getting filenames from the filename_queue.  No
-      # header or footer in the binary, so we leave header_bytes
-      # and footer_bytes at their default of 0.
-    reader = tf.FixedLengthRecordReader(record_bytes=record_bytes)
-    result.key, value = reader.read(filename_queue)
-
-    #print(type(result.key), result.key)
-      # Convert from a string to a vector of uint8 that is record_bytes long.
-    record_bytes = tf.decode_raw(value, tf.uint8)
-
-      # The first bytes represent the label, which we convert from uint8->int32.
-    result.label = tf.cast(tf.slice(record_bytes, [0], [label_bytes]), tf.int32)
-
-      # The remaining bytes after the label represent the image, which we reshape
-      # from [depth * height * width] to [depth, height, width].
-    depth_major = tf.reshape(tf.slice(record_bytes, [label_bytes], [image_bytes]),
-    [result.depth, result.height, result.width])
-      # Convert from [depth, height, width] to [height, width, depth].
-    result.imagematrix = tf.transpose(depth_major, [1, 2, 0])
-    return result
-
-def _collect_paths(input_directory):
-    string_tensor = []
-    for subdir, dirs, files in os.walk(input_directory):
-        for f in files:
-            if '.bin' in f:
-                string_tensor.append(input_directory+f)
-    return string_tensor
-
-def inputs(input_directory, batch_size = 64, num_epochs = None):
-
-    string_tensor = _collect_paths(input_directory)
-    shuffle(string_tensor)
-
-    filename_queue = tf.train.string_input_producer(
-    string_tensor, num_epochs = num_epochs, shuffle = False)
-
-    image_record = read_my_data(filename_queue)
-    image_record.imagematrix = tf.cast(image_record.imagematrix, tf.float32)
-
-    min_after_dequeue = 10000
-    capacity = min_after_dequeue +  3 * batch_size
-
-    example_batch, label_batch, fname_batch = tf.train.shuffle_batch(
-    [image_record.imagematrix, image_record.label, image_record.key],
-    batch_size = batch_size, capacity = capacity,
-    min_after_dequeue = min_after_dequeue, allow_smaller_final_batch = True)
-
-    label_batch = tf.reshape(label_batch, shape=[-1])
-    return example_batch, label_batch, fname_batch
-
 def empty_dir(path):
     files = glob.glob(path + '*')
     for f in files:
         os.remove(f)
 
-dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
-original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
-train_path = os.path.join(dir, 'tensors/')
-test_path = os.path.join(dir, 'test_set/')
+class dataset():
+    def __init__(self, df, spot):
+        self.df = df#pd.read_csv(csv_path)
+        self.image_directory = original_imgs_path
+        self.train_directory = train_path
+        self.test_directory = test_path
+
+        self._filter_by_spot( [spot])#[3, 4, 5, 6, 7, 8, 9, 10, 11] )
+        self._filter_by_dim_ratio()
+
+        self._label()
+        self._train_test_split()
+        self.write_matrix()
+
+
+    def _filter_by_spot(self, spots):
+        spots_to_strs = ['Spot' + str(s) for s in spots]
+        # regex '|' to try to match each of the substrings in the words in df['Image Location']
+        self.df = self.df[ self.df['Image Location'].str.contains( '|'.join(spots_to_strs)  ) ]
+
+    def _filter_by_dim_ratio(self, ratio_threshold = 0.5):
+        # eliminate cells too rectangular
+        self.df.length, self.df.width = (self.df.YMax - self.df.YMin,
+                                         self.df.XMax - self.df.XMin)
+        self.df.ratio1_good = ( self.df.length / self.df.width > ratio_threshold )
+        self.df.ratio2_good = ( self.df.width / self.df.length > ratio_threshold )
+        self.df = self.df[ (self.df.ratio1_good == True) & (self.df.ratio2_good == True) ]
+
+    def _label(self):
+        ''' binary label: CD3 1/0 | CD4 1/0 | CD8 1/0 | CD20 1/0
+        '''
+        self.df['label'] = self.df['Dye 2 Positive'].astype(str)
+        self.df['label'] += (self.df['Dye 3 Positive'].astype(str) +
+                         self.df['Dye 4 Positive'].astype(str) +
+                         self.df['Dye 6 Positive'].astype(str) )
+
+        def _binary_to_dec(binary_string):
+            valid_labels = {'0000':0, '0001':1, '1010':2, '1100':3, '1110':4, }
+            if binary_string in valid_labels.keys():
+                return valid_labels[binary_string]
+            return 5
+
+        self.df['label_binary'] = self.df.label.apply(_binary_to_dec )
+
+    def _train_test_split(self):
+        self.df['proba'] = np.random.uniform(0, 1, self.df.shape[0])
+        self.df['test_set'] = self.df.proba < 0.1
+
+        # training sample cannot be test nor be biologically impossible
+        # but ambiguous/impossible samples may appear in test w/ label 5
+        self.df['train_set'] =  ~self.df['test_set'] & (self.df['label_binary'] != 5)
+        self.df = self.df[ self.df.test_set | self.df.train_set  ]
+
+    def _write(self, row):
+        path_to_write = self.train_directory
+        if row['test_set']:
+            path_to_write = self.test_directory
+
+        save( [row['XMin'], row['YMin'], row['XMax'], row['YMax'] ],
+        int(row['spot']), row['spot'] + str(row['Object Id']),
+        row['label_binary'], path_to_write)
+        return ' written'
+
+    def write_matrix(self):
+        self.df['spot'] = self.df['Image Location'].str.split('_').str[-1]
+        self.df['spot'] = self.df['spot'].str.extract('([0-9]+)', expand = False)
+        self.df['written'] = self.df.apply(lambda row: self._write(row), axis = 1)
 
 if __name__ == '__main__':
-    #empty_dir(train_path)
-    #empty_dir(test_path)
+    empty_dir(train_path)
+    empty_dir(test_path)
     # generate spotX.csv from /data/cell_metadata.csv
     df = pd.read_csv('../data/cell_metadata.csv')
+    np.random.seed(42)
+
+    spots = [3, 4, 5, 6, 7, 8, 9, 10, 11]
+    def f(s):
+        dataset(df, spot = s)
+
+    pool = Pool()
+    results = pool.map( f, spots)
+    pool.close()
+    pool.join()
+
+    # for spot in [6, 8,9,10,11]:
+    #     spot_metadata = df[ df['Image Location'].str.contains('Spot%s' %(spot))]
+    #     gen_tensors(spot, spot_metadata)
 
     # # creating intermediate dataframes to be read later
     # for i in range(3, 12):
     #     spot = df[ df['Image Location'].str.contains('Spot%s' %(i))]
     #     spot.to_csv('spot%s.csv' %(i))
 
-    spots = [5, 6, 7, 8, 9, 10, 11]
-    metadata_list = []
-    for i in range(5, 12):
-         metadata_list.append(df[ df['Image Location'].str.contains('Spot%s' %(i))] )
 
-    pool = Pool()
-    results = pool.starmap( gen_tensors, zip(spots, metadata_list))
-    pool.close()
-    pool.join()
+    #multi-processing option
+    # spots = [6,8,9,10,11] #[3, 4, 5, 6, 7, 8, 9, 10, 11]
+    # metadata_list = []
+    # for i in spots:
+    #      metadata_list.append(df[ df['Image Location'].str.contains('Spot%s' %(i))] )
+    #
+    # pool = Pool()
+    # results = pool.starmap( gen_tensors, zip(spots, metadata_list))
+    # pool.close()
+    # pool.join()
 
-        #gen_tensors(i, original_imgs_path, train_path, test_path, spot_metadata)
-
-# TODO: test normalizing
 def normalize(arr):
     """
     Linear normalization
@@ -216,13 +183,14 @@ def normalize(arr):
     """
     arr = arr.astype('float')
     # Do not touch the alpha channel
-    for i in range(3):
+    for i in range(32):
         minval = arr[...,i].min()
         maxval = arr[...,i].max()
         if minval != maxval:
             arr[...,i] -= minval
             arr[...,i] *= (255.0/(maxval-minval))
     return arr
+
 
 # def center(box):
 #     c_x = (box[2] + box[0])/2

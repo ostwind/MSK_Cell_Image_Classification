@@ -74,15 +74,19 @@ output_directory, zoomed_output_directory, total_metadata
             ymin = metadata.ix[i,'YMin']
             xmax = metadata.ix[i,'XMax']
             ymax = metadata.ix[i,'YMax']
-            cell_id = metadata.ix[i, 'Object Id']
-            cd4_intensity = metadata.ix[i, 'Marker 2 Intensity']
-            cd4_pos = metadata.ix[i, 'Marker 2 Positive']
-            sox10_pos = metadata.ix[i, 'Marker 8 Positive']
-            sox10_intensity = metadata.ix[i, 'Marker 8 Intensity']
+
+
+
+            cell_id = metadata.ix[index, 'Object Id']
+            cd4 = metadata.ix[index, 'Dye 3 Positive']
+            cd8 = metadata.ix[index, 'Dye 4 Positive']
+            cd20 = metadata.ix[index, 'Dye 6 Positive']
+
+
             if 1:
                 count += 1
                 c = center([xmin, ymin, xmax, ymax])
-                save_name = '%s_cd4_%.1f_sox10_%.1f.png' %(
+                save_name = '%s_  .png' %(
                 cell_id, cd4_pos, sox10_pos)
 
                 draw.rectangle([xmin - 10, ymin - 10, xmax + 10, ymax + 10], outline = 'red')
