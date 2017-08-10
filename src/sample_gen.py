@@ -17,7 +17,7 @@ from random import shuffle
 from multiprocessing.dummy import Pool
 import itertools
 
-img_length = 30
+img_length = 40
 
 dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
 original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
@@ -61,6 +61,7 @@ def save(region, spot, cell_id, label, output_dir ):
         assert t.shape == (img_length, img_length, 32), 'incorrect shape: %s' %(t.shape)
 
         filename = '%s_%s_%s.bin' %(cell_id, label, cell_orientation)
+        # label removed, dim restored in sample_feed.read_my_data
         rotated_tensor = np.insert( t, 0, int(label) )
         rotated_tensor = rotated_tensor.flatten()
         rotated_tensor.tofile(output_dir + filename)

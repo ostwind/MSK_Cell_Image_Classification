@@ -75,13 +75,10 @@ output_directory, zoomed_output_directory, total_metadata
             xmax = metadata.ix[i,'XMax']
             ymax = metadata.ix[i,'YMax']
 
-
-
             cell_id = metadata.ix[index, 'Object Id']
             cd4 = metadata.ix[index, 'Dye 3 Positive']
             cd8 = metadata.ix[index, 'Dye 4 Positive']
             cd20 = metadata.ix[index, 'Dye 6 Positive']
-
 
             if 1:
                 count += 1
@@ -102,6 +99,13 @@ output_directory, zoomed_output_directory, total_metadata
 
                 if count % 100 == 0:
                     print( 'percentage of samples generated: ', count/metadata.shape[0] )
+
+def save_img(row, original_img, img_path, resize=None):
+    draw = ImageDraw.Draw(original_img)
+    save_name = '%s_%s'
+
+def draw_box(input_directory, output_directory, zoomed_output_directory, total_metadata):
+    return
 
 def _channel_to_filepath(input_directory, channel_list, spot):
     file_paths = glob.glob(input_directory + '*')
@@ -176,16 +180,21 @@ if __name__ == '__main__':
     rgb_orders = [['PD1', 'CD3', 'CD14'], [ 'CD8', 'CD3', 'CD15'], ['CD8', 'CD3','CD4']]
     dir_lookup = make_dir_dictionary(rgb_orders, '/home/lihan/Documents/image/data/real_original/')
 
+    # load class probabilities
+    # load rgb_orders
     df = pd.read_csv('../data/cell_metadata.csv')
     #bad_cases = pickle.load( open('mislabeled.p', 'rb'))
     #bad_cases = [int(x) for x in bad_cases]
     #bad_df = df[ df['Object Id'].isin(bad_cases) ]
 
+    
+
+
     #spot5 = pd.read_csv('spot5.csv')
     #modified_spot5 = spot5.loc[(spot5['Marker 8 Intensity'] < 11.8) & (spot5['Marker 8 Intensity'] > 9.1)]
     #intensity range leads to 892 label 1 samples, 880 label 0 samples
 
-    gen_samples(dir_lookup, rgb_orders = rgb_orders, total_metadata = df)#'SOX10_AFRemoved_pyr16_spot_005.png')
+    #gen_samples(dir_lookup, rgb_orders = rgb_orders, total_metadata = df)#'SOX10_AFRemoved_pyr16_spot_005.png')
 
 ''' \\ -x, -y
     (x1, y1) --------
