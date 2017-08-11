@@ -94,7 +94,7 @@ with tf.name_scope("output"):
 
     # f_names | label | class prob 1 | ... | class prob 6 |
     # creating this tensor in tf is super awk
-    class_proba_list = [ (input_fnames), (tf.as_string(input_labels_batch) )  ]
+    class_proba_list = [ input_fnames, tf.as_string(input_labels_batch), tf.as_string(mislabeled)  ]
     #print(input_fnames.get_shape(), tf.as_string(input_labels_batch).get_shape())
 
     Y_proba_str = tf.as_string(Y_proba)
@@ -113,18 +113,16 @@ with tf.name_scope("train"):
     with tf.control_dependencies(extra_update_ops):
         training_op = optimizer.minimize(loss)
 
-num_classes_in_wild = 6
-
 with tf.name_scope("eval"):
     correct = tf.nn.in_top_k(logits, input_labels_batch, 1)
     accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
 
     # Compute a per-batch confusion matrix
     batch_confusion = tf.confusion_matrix(input_labels_batch, preds,
-                                             num_classes=num_classes_in_wild,
+                                             num_classes=num_classes,
                                              name='batch_confusion')
     # Create an accumulator variable to hold the counts
-    confusion = tf.Variable( tf.zeros( [num_classes_in_wild, num_classes_in_wild],
+    confusion = tf.Variable( tf.zeros( [num_classes, num_classes],
                                       dtype=tf.int32 ),
                                       name='confusion' )
     # Create the update op for doing a "+=" accumulation on the batch
@@ -142,11 +140,7 @@ acc_record = tf.summary.scalar('accuracy', accuracy)
 train_acc_writer = tf.summary.FileWriter(logdir + 'train', tf.get_default_graph())
 test_acc_writer = tf.summary.FileWriter(logdir + 'test', tf.get_default_graph())
 
-class_proba_record = tf.summary.text('class_probabilities', class_proba)
-#class_writer = tf.summary.FileWriter(logdir + 'class_proba', tf.get_default_graph())
-
-misclassified_record = tf.summary.text('misclassifieds', mislabeled_filenames)
-misclassified_writer = tf.summary.FileWriter(logdir + 'text_data', tf.get_default_graph())
+os.makedirs(logdir + 'tensor_logs')
 
 write_op = tf.summary.merge_all() # put into session.run!
 
@@ -160,16 +154,15 @@ def record(sess, step, epoch, n_epochs):
 
         acc_test = acc_record.eval(feed_dict = { training: False} )
         test_acc_writer.add_summary(acc_test, step)
-        #
-    if epoch == n_epochs - 1 and step % 200 == 0:
+
+    if epoch == n_epochs -1 and step % 200 == 0:
         # test_op updates confusion matrix: sess -> test_op -> confusion_update -> assign
-        _, mis_rec, class_pr = sess.run( [test_op, misclassified_record, class_proba_record],
+        _, test_batch_stats = sess.run( [test_op, class_proba],
                                feed_dict={training: False})
 
-        misclassified_writer.add_summary(class_pr, step)
-        misclassified_writer.add_summary(mis_rec, step)
+        np.save('%stensor_logs/test_batch_step_%s' %(logdir, step), test_batch_stats)
 
-    if epoch == n_epochs - 1 and step == 1700:
+    if epoch == n_epochs - 1 and step % 400 == 0:
        print(confusion.eval())
 
 training_set_size = len([

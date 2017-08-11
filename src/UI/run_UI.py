@@ -339,7 +339,6 @@ class MainApplication(Frame):
         # update first page after importing
         self.read_to_radio()
 
-
 if __name__== "__main__":
 
     #dir = os.path.normpath(os.getcwd() + os.sep + os.pardir)
@@ -356,4 +355,4 @@ if __name__== "__main__":
 
 # TODO
 # re-arrange labels list of lists into [ [sample 1], [sample 2], ... ]
-#   advantages: retrieve sample array to write into filename, cycling, writing to sample 
+#   advantages: retrieve sample array to write into filename, cycling, writing to sample
