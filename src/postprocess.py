@@ -131,10 +131,6 @@ def box(center, rect_h = 500):
     y2 = int( center[1] + (rect_h // 2) )
     return x1, y1, x2, y2
 
-def caption():
-    pass
-
-#font = ImageFont.truetype("sans-serif.ttf", 16)
 font = ImageFont.truetype("/home/lihan/fonts/Inconsolata/Inconsolata Bold for Powerline.ttf", 16)
 
 def make_cell_profile( row):
@@ -156,7 +152,6 @@ def make_cell_profile( row):
         draw.rectangle([xmin - 10, ymin - 10, xmax + 10, ymax + 10], outline = 'red')
 
         c = center( (xmin, ymin, xmax, ymax) )
-
         captioned_img = im.crop(box(c, rect_h = 250) )
         captioned_img = captioned_img.resize((435,335), Image.ANTIALIAS)
         draw2 = ImageDraw.Draw(captioned_img)
@@ -172,7 +167,6 @@ def make_cell_profile( row):
         %(row['pred'], row['class'] ), font = font  )
         draw2.text((0, 300), "CD 3 Intensity / %.1f | CD 4 / %.1f \n CD 8 / %.1f | CD 20 / %.1f"
         %(row['Dye 2 Nucleus Intensity'], row['Dye 3 Nucleus Intensity'], row['Dye 4 Nucleus Intensity'], row['Dye 6 Nucleus Intensity'] ) , font = font )
-
 
         captioned_img.save(cropped + '/' + save_name_color_variation, 'PNG')
     return 'done'

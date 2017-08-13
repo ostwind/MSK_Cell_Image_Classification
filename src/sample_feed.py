@@ -19,15 +19,15 @@ def read_my_data(filename_queue):
     class ImageRecord(object):
         def __init__(self):
             # Dimensions of the images in the dataset.
-            self.height = 30
-            self.width = 30
+            self.height = 50
+            self.width = 50
             self.depth = 32
 
     result = ImageRecord()
     label_bytes = 1
     image_bytes = result.height * result.width * result.depth
     record_bytes = label_bytes + image_bytes
-    assert record_bytes == (30*30*32)+1
+    assert record_bytes == (50*50*32)+1
 
       # Read a record, getting filenames from the filename_queue.  No
       # header or footer in the binary, so we leave header_bytes

@@ -17,32 +17,60 @@ from random import shuffle
 from multiprocessing.dummy import Pool
 import itertools
 
-img_length = 40
+img_length = 50
 
 dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
 original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
 train_path = os.path.join(dir, 'tensors/')
 test_path = os.path.join(dir, 'test_set/')
-
 tif_files = glob.glob(original_imgs_path + '*')
 
-def tensor(spot, r):
-    x1, y1, x2, y2 = r
-    tensor = []
-    for f in tif_files:
-        # extract spot integer from filenames e.g. -filename-_spot_00X.tif
-        if spot ==  int(f.split('_')[-1].split('.')[0] ):
-            im = Image.open(f)
-            cell_im = im.crop( (x1, y1, x2, y2) )
-            cell_im = cell_im.convert(mode = 'F')
-            cell_im = cell_im.resize((img_length, img_length), Image.ANTIALIAS)
-            # approx normalization to ~0-10 range
-            cell_matrix = (np.array(cell_im))/255
-            tensor.append(cell_matrix)
-    tensor = np.array(tensor).astype(np.uint8).transpose()
+def bool_mask(array):
+    threshold = 50
+    avg = np.mean(array)
+    return ((array-avg) > threshold).astype(int)
 
-    #tensor = normalize(tensor)
-    #print(tensor[:,:,0], tensor.shape)
+def center(box):
+    c_x = (box[2] + box[0])/2
+    c_y = (box[3] + box[1])/2
+    return int(c_x), int(c_y)
+
+def box(center, length):
+    half_length = length // 2
+    x1, y1 = int( center[0]- half_length ), int( center[1]- half_length )
+    x2, y2 = int( center[0] + half_length ), int( center[1] + half_length )
+    return x1, y1, x2, y2
+
+#np.set_printoptions(threshold=np.nan)
+
+def tensor(spot, r):
+    spot_specific_tif_files = [ f for f in tif_files if spot ==  int(f.split('_')[-1].split('.')[0] )]
+    # dapi matrix for cell segmentation, zero out values outside seg. mask
+    dapi_file = [f for f in spot_specific_tif_files if 'S029' in f][0]
+    dapi_mask = np.array(Image.open(dapi_file) )
+    im_height, im_width = np.array(dapi_mask).shape
+
+    # r is a 4-tuple (x1, y1, x2, y2)
+    x1, y1, x2, y2 = box( center( r ), length = img_length)
+    if x1 <= 0 or y1 <= 0 or x2 >= im_width or y2 >= im_height:
+        return np.array([False])
+
+    #dapi_mask = dapi_mask[ y1:y2 , x1:x2 ]
+    #dapi_mask = bool_mask(dapi_mask)
+
+    tensor = []
+    for f in spot_specific_tif_files:
+        # extract spot integer from filenames e.g. -filename-_spot_00X.tif
+        im = Image.open(f)
+        cell_im = im.crop( (x1, y1, x2, y2)  )
+
+        # approx normalization to ~0-10 range
+        cell_matrix = (np.array(cell_im))/255
+        #cell_matrix = np.multiply(cell_matrix, dapi_mask)
+
+        tensor.append(cell_matrix)
+
+    tensor = np.array(tensor).astype(np.uint8).transpose()
     return tensor
 
 def rotate(tensor): # dont rotate if there are enough samples
@@ -54,8 +82,12 @@ def rotate(tensor): # dont rotate if there are enough samples
     return rotations
 
 def save(region, spot, cell_id, label, output_dir ):
-    tensors = rotate(tensor(spot, region))
+    original_cell = tensor(spot, region)
+    # cell box might be out of bounds
+    if len(original_cell) == 1:
+        return
 
+    tensors = rotate(original_cell)
     cell_orientation = 0
     for t in tensors:
         assert t.shape == (img_length, img_length, 32), 'incorrect shape: %s' %(t.shape)
@@ -73,19 +105,19 @@ def empty_dir(path):
         os.remove(f)
 
 class dataset():
-    def __init__(self, df, spot):
-        self.df = df#pd.read_csv(csv_path)
+    def __init__(self, csv_path, spot):
+        self.df = pd.read_csv(csv_path)
         self.image_directory = original_imgs_path
         self.train_directory = train_path
         self.test_directory = test_path
 
         self._filter_by_spot( [spot])#[3, 4, 5, 6, 7, 8, 9, 10, 11] )
         self._filter_by_dim_ratio()
+        #self._filter_by_new_box()
 
         self._label()
         self._train_test_split()
         self.write_matrix()
-
 
     def _filter_by_spot(self, spots):
         spots_to_strs = ['Spot' + str(s) for s in spots]
@@ -144,38 +176,19 @@ if __name__ == '__main__':
     empty_dir(train_path)
     empty_dir(test_path)
     # generate spotX.csv from /data/cell_metadata.csv
-    df = pd.read_csv('../data/cell_metadata.csv')
+
+    path = '../data/cell_metadata.csv'
+
     np.random.seed(42)
 
-    spots = [3, 4, 5, 6, 7, 8, 9, 10, 11]
+    spots = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17]
     def f(s):
-        dataset(df, spot = s)
+        dataset(path, spot = s)
 
     pool = Pool()
     results = pool.map( f, spots)
     pool.close()
     pool.join()
-
-    # for spot in [6, 8,9,10,11]:
-    #     spot_metadata = df[ df['Image Location'].str.contains('Spot%s' %(spot))]
-    #     gen_tensors(spot, spot_metadata)
-
-    # # creating intermediate dataframes to be read later
-    # for i in range(3, 12):
-    #     spot = df[ df['Image Location'].str.contains('Spot%s' %(i))]
-    #     spot.to_csv('spot%s.csv' %(i))
-
-
-    #multi-processing option
-    # spots = [6,8,9,10,11] #[3, 4, 5, 6, 7, 8, 9, 10, 11]
-    # metadata_list = []
-    # for i in spots:
-    #      metadata_list.append(df[ df['Image Location'].str.contains('Spot%s' %(i))] )
-    #
-    # pool = Pool()
-    # results = pool.starmap( gen_tensors, zip(spots, metadata_list))
-    # pool.close()
-    # pool.join()
 
 def normalize(arr):
     """
@@ -191,26 +204,3 @@ def normalize(arr):
             arr[...,i] -= minval
             arr[...,i] *= (255.0/(maxval-minval))
     return arr
-
-
-# def center(box):
-#     c_x = (box[2] + box[0])/2
-#     c_y = (box[3] + box[1])/2
-#     return float(c_x), float(c_y)
-#
-# def box(center, h = img_length):
-#     x1 = int( center[0]- (h // 2) )
-#     y1 = int( center[1]- (h // 2) )
-#     x2 = int( center[0] + (h // 2) )
-#     y2 = int( center[1] + (h // 2) )
-#     return x1, y1, x2, y2
-#
-# # crop this size w/ no rescaling
-# def enforce_size(region):
-#     return box(center(region), h = img_length)
-
-# def is_good_size(region, greater_than = img_length, less_than = img_length):
-#     x1, y1, x2, y2 = region
-#     if x1 < 0 or y1 < 0 or x2 < 0 or y2 < 0:
-#         return False
-#     return (x2 - x1 <= less_than) and (x2 - x1 >= greater_than) and (y2 - y1 <= less_than) and (y2 - y1 >= greater_than)

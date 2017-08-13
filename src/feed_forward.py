@@ -56,7 +56,7 @@ ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding = "VALID"):
         pool = tf.nn.max_pool(input, ksize= ksize, strides=strides, padding= padding)
         #print('pool3: ', pool3.get_shape())
         if flatten: # pool_fmaps = pool5_fmaps = conv4_fmaps = 40
-            pool = tf.reshape(pool, shape=[-1, pool_fmaps * 7 * 7])
+            pool = tf.reshape(pool, shape=[-1, pool_fmaps * 12 * 12])
     return pool
 
 conv1_fmaps = 10
