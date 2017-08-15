@@ -17,6 +17,9 @@ from random import shuffle
 from multiprocessing.dummy import Pool
 import itertools
 
+# https://stackoverflow.com/questions/15639779/why-does-multiprocessing-use-only-a-single-core-after-i-import-numpy
+os.system("taskset -p 0xff %d" % os.getpid())
+
 img_length = 50
 
 dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
@@ -26,7 +29,7 @@ test_path = os.path.join(dir, 'test_set/')
 tif_files = glob.glob(original_imgs_path + '*')
 
 def bool_mask(array):
-    threshold = 50
+    threshold = 0
     avg = np.mean(array)
     return ((array-avg) > threshold).astype(int)
 
@@ -43,6 +46,14 @@ def box(center, length):
 
 #np.set_printoptions(threshold=np.nan)
 
+def calc_offset( r , length = img_length ):
+    x1, y1, x2, y2 = r
+    x_offset = (img_length - (x2-x1)) // 2
+    y_offset = (img_length - (y2-y1)) // 2
+    return x_offset, y_offset
+
+#TODO: ladder network
+
 def tensor(spot, r):
     spot_specific_tif_files = [ f for f in tif_files if spot ==  int(f.split('_')[-1].split('.')[0] )]
     # dapi matrix for cell segmentation, zero out values outside seg. mask
@@ -51,25 +62,26 @@ def tensor(spot, r):
     im_height, im_width = np.array(dapi_mask).shape
 
     # r is a 4-tuple (x1, y1, x2, y2)
+    # check if img is out of bounds
     x1, y1, x2, y2 = box( center( r ), length = img_length)
     if x1 <= 0 or y1 <= 0 or x2 >= im_width or y2 >= im_height:
-        return np.array([False])
+       return np.array([False])
 
     #dapi_mask = dapi_mask[ y1:y2 , x1:x2 ]
     #dapi_mask = bool_mask(dapi_mask)
 
+    #result = np.zeros( (img_length, img_length) )
     tensor = []
     for f in spot_specific_tif_files:
         # extract spot integer from filenames e.g. -filename-_spot_00X.tif
         im = Image.open(f)
-        cell_im = im.crop( (x1, y1, x2, y2)  )
-
+        cell_im = im.crop( (x1, y1, x2, y2) )
         # approx normalization to ~0-10 range
         cell_matrix = (np.array(cell_im))/255
-        #cell_matrix = np.multiply(cell_matrix, dapi_mask)
-
+        # cell_matrix = np.multiply(cell_matrix, dapi_mask)
         tensor.append(cell_matrix)
 
+    #CHANGE: if not convert to uint8, file sizes are huge
     tensor = np.array(tensor).astype(np.uint8).transpose()
     return tensor
 
@@ -90,6 +102,7 @@ def save(region, spot, cell_id, label, output_dir ):
     tensors = rotate(original_cell)
     cell_orientation = 0
     for t in tensors:
+        #print(type(t), t.shape)
         assert t.shape == (img_length, img_length, 32), 'incorrect shape: %s' %(t.shape)
 
         filename = '%s_%s_%s.bin' %(cell_id, label, cell_orientation)
@@ -113,7 +126,6 @@ class dataset():
 
         self._filter_by_spot( [spot])#[3, 4, 5, 6, 7, 8, 9, 10, 11] )
         self._filter_by_dim_ratio()
-        #self._filter_by_new_box()
 
         self._label()
         self._train_test_split()
@@ -126,8 +138,14 @@ class dataset():
 
     def _filter_by_dim_ratio(self, ratio_threshold = 0.5):
         # eliminate cells too rectangular
-        self.df.length, self.df.width = (self.df.YMax - self.df.YMin,
+        self.df['length'], self.df['width'] = (self.df.YMax - self.df.YMin,
                                          self.df.XMax - self.df.XMin)
+
+        # filter cells too large in either dimension
+        self.df['good_len'] = self.df.length < img_length
+        self.df['good_width'] = self.df.width < img_length
+        self.df = self.df[ (self.df.good_len == True) & (self.df.good_width == True) ]
+
         self.df.ratio1_good = ( self.df.length / self.df.width > ratio_threshold )
         self.df.ratio2_good = ( self.df.width / self.df.length > ratio_threshold )
         self.df = self.df[ (self.df.ratio1_good == True) & (self.df.ratio2_good == True) ]

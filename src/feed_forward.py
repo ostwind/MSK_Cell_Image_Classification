@@ -6,6 +6,7 @@ now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
 root_logdir = 'tf_logs'
 logdir = '{}/run-{}/'.format(root_logdir, now)
 
+from corrupted_forward import *
 import numpy as np
 import os
 from sample_feed import inputs
@@ -55,7 +56,10 @@ ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding = "VALID"):
     with tf.name_scope(name):
         pool = tf.nn.max_pool(input, ksize= ksize, strides=strides, padding= padding)
         #print('pool3: ', pool3.get_shape())
-        if flatten: # pool_fmaps = pool5_fmaps = conv4_fmaps = 40
+        if flatten:
+            # 50 X 50 => 12 X 12
+            # 60 X 60 => 15 X 15
+            # pool_fmaps = pool5_fmaps = conv4_fmaps = 40
             pool = tf.reshape(pool, shape=[-1, pool_fmaps * 12 * 12])
     return pool
 
@@ -70,6 +74,9 @@ hidden1_drop = conv(input_batch, conv1_fmaps, training, 'conv1',
 ksize = 5)
 hidden2_drop = conv(hidden1_drop, conv2_fmaps, training, 'conv2',)
 pool3_flat = pool(hidden2_drop, pool3_fmaps, 'pool3',)
+
+#TODO: create 3rd queue for unlabeled data
+# => autoencoder, compute cost with hidden4_drop and denoise ?
 
 hidden4_drop = conv(pool3_flat, conv4_fmaps, training, 'conv4',)
 pool5_flat = pool(hidden4_drop, pool5_fmaps, 'pool5',
@@ -92,17 +99,13 @@ with tf.name_scope("output"):
     mislabeled = tf.not_equal( preds, input_labels_batch )
     mislabeled_filenames = tf.cast( tf.boolean_mask( input_fnames, mislabeled ), tf.string)
 
-    # f_names | label | class prob 1 | ... | class prob 6 |
-    # creating this tensor in tf is super awk
+    # f_names | label | mislabeled | class prob 1 | ... | class prob 6 |
     class_proba_list = [ input_fnames, tf.as_string(input_labels_batch), tf.as_string(mislabeled)  ]
-    #print(input_fnames.get_shape(), tf.as_string(input_labels_batch).get_shape())
-
     Y_proba_str = tf.as_string(Y_proba)
-
     class_proba_list += tf.unstack(Y_proba_str, axis = 1)
     class_proba = tf.stack(class_proba_list)
 
-with tf.name_scope('loss'): # once I mv this section from 'train', loss appears as loss_1 on tensorboard
+with tf.name_scope('loss'):
     xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=input_labels_batch)
     loss = tf.reduce_mean(xentropy)
 
@@ -155,6 +158,8 @@ def record(sess, step, epoch, n_epochs):
         acc_test = acc_record.eval(feed_dict = { training: False} )
         test_acc_writer.add_summary(acc_test, step)
 
+        #print(input_labels_batch.eval(), input_labels_batch.get_shape())
+
     if epoch == n_epochs -1 and step % 200 == 0:
         # test_op updates confusion matrix: sess -> test_op -> confusion_update -> assign
         _, test_batch_stats = sess.run( [test_op, class_proba],
@@ -162,7 +167,7 @@ def record(sess, step, epoch, n_epochs):
 
         np.save('%stensor_logs/test_batch_step_%s' %(logdir, step), test_batch_stats)
 
-    if epoch == n_epochs - 1 and step % 400 == 0:
+    if epoch == n_epochs - 1 and step % 100 == 0:
        print(confusion.eval())
 
 training_set_size = len([
@@ -186,6 +191,5 @@ def train( restore = False):
                 step += 1
 
             save_path = saver.save(sess, "./saved_model")
-    file_writer.close()
-
+    #file_writer.close()
 train()
