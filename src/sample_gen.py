@@ -17,6 +17,7 @@ from random import shuffle
 from multiprocessing.dummy import Pool
 import itertools
 
+# needed to make multiprocess work on Ubuntu OS
 # https://stackoverflow.com/questions/15639779/why-does-multiprocessing-use-only-a-single-core-after-i-import-numpy
 os.system("taskset -p 0xff %d" % os.getpid())
 
@@ -24,8 +25,9 @@ img_length = 50
 
 dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
 original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
-train_path = os.path.join(dir, 'tensors/')
-test_path = os.path.join(dir, 'test_set/')
+labeled = os.path.join(dir, 'labeled/')
+unlabeled = os.path.join(dir, 'unlabeled/')
+test_set = os.path.join(dir, 'test_set/')
 tif_files = glob.glob(original_imgs_path + '*')
 
 def bool_mask(array):
@@ -121,8 +123,10 @@ class dataset():
     def __init__(self, csv_path, spot):
         self.df = pd.read_csv(csv_path)
         self.image_directory = original_imgs_path
-        self.train_directory = train_path
-        self.test_directory = test_path
+
+        self.unlabeled_directory = unlabeled
+        self.labeled_directory = labeled
+        self.test_directory = test_set
 
         self._filter_by_spot( [spot])#[3, 4, 5, 6, 7, 8, 9, 10, 11] )
         self._filter_by_dim_ratio()
@@ -164,25 +168,29 @@ class dataset():
                 return valid_labels[binary_string]
             return 5
 
-        self.df['label_binary'] = self.df.label.apply(_binary_to_dec )
+        self.df['label_dec'] = self.df.label.apply(_binary_to_dec )
 
     def _train_test_split(self):
         self.df['proba'] = np.random.uniform(0, 1, self.df.shape[0])
-        self.df['test_set'] = self.df.proba < 0.1
 
-        # training sample cannot be test nor be biologically impossible
-        # but ambiguous/impossible samples may appear in test w/ label 5
-        self.df['train_set'] =  ~self.df['test_set'] & (self.df['label_binary'] != 5)
-        self.df = self.df[ self.df.test_set | self.df.train_set  ]
+        self.df['unlabeled'] = self.df['label_dec'] == 5
+        self.df['labeled'] = self.df['label_dec'] != 5
+
+        #70/30 train/test split, of the labeled data
+        self.df['test_set'] =  (self.df.proba < 0.3) & self.df['labeled']
+        self.df['train_set'] =  ~self.df['test_set'] & self.df['labeled']
+        #self.df = self.df[ self.df.test_set | self.df.train_set  ]
 
     def _write(self, row):
-        path_to_write = self.train_directory
+        path_to_write = self.unlabeled_directory
         if row['test_set']:
             path_to_write = self.test_directory
+        if row['train_set']:
+            path_to_write = self.labeled_directory
 
         save( [row['XMin'], row['YMin'], row['XMax'], row['YMax'] ],
         int(row['spot']), row['spot'] + str(row['Object Id']),
-        row['label_binary'], path_to_write)
+        row['label_dec'], path_to_write)
         return ' written'
 
     def write_matrix(self):
@@ -191,8 +199,9 @@ class dataset():
         self.df['written'] = self.df.apply(lambda row: self._write(row), axis = 1)
 
 if __name__ == '__main__':
-    empty_dir(train_path)
-    empty_dir(test_path)
+    empty_dir(labeled)
+    empty_dir(test_set)
+    empty_dir(unlabeled)
     # generate spotX.csv from /data/cell_metadata.csv
 
     path = '../data/cell_metadata.csv'

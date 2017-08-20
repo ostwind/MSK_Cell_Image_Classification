@@ -7,7 +7,6 @@ import tensorflow as tf
 import random
 import glob
 from random import shuffle
-from multiprocessing.dummy import Pool
 import itertools
 
 ''' SAMPLE QUEUE GENERATION AND DEQUEUE FOR TF model.py

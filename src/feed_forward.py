@@ -148,7 +148,7 @@ os.makedirs(logdir + 'tensor_logs')
 write_op = tf.summary.merge_all() # put into session.run!
 
 def record(sess, step, epoch, n_epochs):
-    if step % 200 == 0: # 8 updates per epoch
+    if step % 50 == 0: # 8 updates per epoch
         #if i % 30 == 0:
         #    print(epoch, step, acc_train)
         l, acc_train = sess.run([ loss_record, acc_record ], feed_dict = {training: True} )
@@ -158,7 +158,7 @@ def record(sess, step, epoch, n_epochs):
         acc_test = acc_record.eval(feed_dict = { training: False} )
         test_acc_writer.add_summary(acc_test, step)
 
-        #print(input_labels_batch.eval(), input_labels_batch.get_shape())
+        label_unlabel_split(input_batch.eval(), input_labels_batch.eval())
 
     if epoch == n_epochs -1 and step % 200 == 0:
         # test_op updates confusion matrix: sess -> test_op -> confusion_update -> assign
@@ -177,7 +177,6 @@ def train( restore = False):
     n_epochs = 4
     with tf.Session() as sess:
         init.run()
-
         if restore:
             saver.restore(sess, './saved_model')
 
