@@ -5,47 +5,24 @@ logdir = '{}/run-{}/'.format(root_logdir, now)
 
 import numpy as np
 import tensorflow as tf
-from sample_feed import inputs
 from functools import partial
 import os
 import math
 from encoder import encoder
 from decoder import decoder
-from model_util import downsample
-
-dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
-original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
-labeled_path = os.path.join(dir, 'labeled/')
-unlabeled = os.path.join(dir, 'unlabeled/')
-test_path = os.path.join(dir, 'test_set/')
-
-with tf.name_scope('input'):
-    # two separate queues
-    labeled_batch, labeled_labels_batch, labeled_fnames = inputs(labeled_path)
-    test_batch, test_labels_batch, test_fnames = inputs(test_path)
-    unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames = inputs(unlabeled)
-
-    labeled = tf.placeholder_with_default(False, shape = (), name = 'labeled_bool')
-    training = tf.placeholder_with_default(True, shape=(), name = 'train_bool')
-
-    input_batch, input_labels_batch, input_fnames = tf.cond(labeled,
-    lambda: tf.cond( training, lambda: (labeled_batch, labeled_labels_batch, labeled_fnames),
-    lambda: (test_batch, test_labels_batch, test_fnames) ),
-    lambda: (unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames))
-
-num_classes = 5
-
-training_set_size = len([
-name for name in os.listdir(labeled_path) if os.path.isfile(labeled_path + name)])
+from model_util import downsample, inputs
 
 class Ladder:
-    def __init__(self, n_epochs, encoder_layer_dims, decoder_layer_dims, noise_std):
+    def __init__(self, n_epochs, encoder_layer_dims, decoder_layer_dims,
+    activation_types, denoise_costs, noise_std):
         self.n_epochs = n_epochs
+        self.denoise_costs = denoise_costs
+
         self.batch_size = tf.shape(input_batch)
         self.optimizer = tf.train.AdamOptimizer()
 
         self.encoder = encoder(encoder_layer_dims,
-        activation_types = ['elu', 'elu', 'elu', 'elu', 'softmax'],
+        activation_types = activation_types,
         noise_std = noise_std, batch_size = self.batch_size)
 
         self.decoder = decoder(decoder_layer_dims, 0)
@@ -76,16 +53,13 @@ class Ladder:
         with tf.name_scope('decoder_UnsupervisedLoss'):
             self.hat_z_array = self.decoder.pre_reconstruction(self.tilde_zs, noisy_unlabeled_logits)
             self.normed_hat_zs = self.decoder.reconstruction(self.hat_z_array, self.z_pre_layers)
-            # denoising cost starts from top decode layer
-            denoise_cost = [0.1, 0.1, 10, 10, 1000]
-            #most import to denoise bottom decode layer according to abi [1000, 10, 0.1, 0.1 ]
             self.unsupervised_loss = 0
 
             assert len(self.z_layers) == len(self.normed_hat_zs)
-            assert len(self.z_layers) == len(denoise_cost)
+            assert len(self.z_layers) == len(self.denoise_costs)
 
             for cost_lambda, z, hat_z in zip(
-            denoise_cost, self.z_layers, self.normed_hat_zs ):
+            self.denoise_costs, self.z_layers, self.normed_hat_zs ):
                 # process the entire batch?
                 self.unsupervised_loss += cost_lambda * tf.losses.mean_squared_error(hat_z, z)
 
@@ -100,6 +74,8 @@ class Ladder:
                 clean_fc = downsample( clean_test_logits, num_classes = num_classes )
 
             self.preds = tf.cast(tf.argmax(clean_fc, 1), tf.int32)
+            correct = tf.nn.in_top_k(logits, input_labels_batch, 1)
+            self.accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
 
             with tf.control_dependencies([self.preds]):
                 self.batch_confusion = tf.confusion_matrix(input_labels_batch, self.preds,
@@ -113,17 +89,39 @@ class Ladder:
                 self.confusion_update = self.confusion.assign( self.confusion + self.batch_confusion )
                 #self.confusion_update = tf.add(confusion, batch_confusion)
 
-    def launch(self):
+    def _create_record(self):
+        with tf.name_scope('records'):
+            self.loss_record = tf.summary.scalar('loss', self.loss)
+            self.loss_writer = tf.summary.FileWriter(logdir + 'loss', tf.get_default_graph())
+
+            self.acc_record = tf.summary.scalar('accuracy', self.accuracy)
+            self.test_acc_writer = tf.summary.FileWriter(logdir + 'test', tf.get_default_graph())
+
+            os.makedirs(logdir + 'tensor_logs')
+            self.write_op = tf.summary.merge_all() # put into session.run!
+
+    # def _record(sess, step, epoch, n_epochs):
+    #     if step % 100 = 0:
+    #         acc_test = sess.run([self.acc_record, self.write_op],
+    #         feed_dict = {labeled: True, training: False} )
+    #         self.test_acc_writer.add_summary(acc_test, step)
+    #         self.
+
+    def launch(self, restore = True):
         print( 'steps per epoch: ', training_set_size // 64 )
         self.init = tf.global_variables_initializer()
+        saver = tf.train.Saver()
         # multi-threads needed because  multi queues cause  tf to lock up
         # https://stackoverflow.com/questions/35414009/multiple-queues-causing-tf-to-lock-up
         with tf.Session(config=tf.ConfigProto(inter_op_parallelism_threads=4,
                                              intra_op_parallelism_threads=4)) as sess:
             self.init.run()
+            self._create_record()
+            if restore and os.path.isfile('./saved_ladder') :
+                saver.restore(sess, './saved_ladder')
             tf.train.start_queue_runners(sess = sess)
-
             step = 0
+
             for epoch in range(self.n_epochs):
                 for i in range(training_set_size // 64):
 
@@ -140,17 +138,49 @@ class Ladder:
                     if step % 20 == 0:
                         print( step, s_loss[0], total_loss - s_loss[0], total_loss)
 
-                    if total_loss < 80 or step > 5100:#step > 400 and step % 20 == 0:
+                    if total_loss < 80 or step > 5100:
                         _, matrix = sess.run(
                         [self.confusion_update, self.confusion],
                         feed_dict = {labeled: True, training: False})
                         print(matrix)
 
                     step += 1
-                save_path = saver.save(sess, "./saved_ladder")
 
-encoder_dims = [20, 40, 80, 160, num_classes]
+                    if step % 200 == 0:
+                        save_path = saver.save(sess, "./saved_ladder")
+
+dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
+original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
+labeled_path = os.path.join(dir, 'labeled/')
+unlabeled = os.path.join(dir, 'unlabeled/')
+test_path = os.path.join(dir, 'test_set/')
+
+with tf.name_scope('input'):
+    # two separate queues
+    labeled_batch, labeled_labels_batch, labeled_fnames = inputs(labeled_path)
+    test_batch, test_labels_batch, test_fnames = inputs(test_path)
+    unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames = inputs(unlabeled)
+
+    labeled = tf.placeholder_with_default(False, shape = (), name = 'labeled_bool')
+    training = tf.placeholder_with_default(True, shape=(), name = 'train_bool')
+
+    input_batch, input_labels_batch, input_fnames = tf.cond(labeled,
+    lambda: tf.cond( training, lambda: (labeled_batch, labeled_labels_batch, labeled_fnames),
+    lambda: (test_batch, test_labels_batch, test_fnames) ),
+    lambda: (unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames))
+
+num_classes = 5
+
+training_set_size = len([
+name for name in os.listdir(labeled_path) if os.path.isfile(labeled_path + name)])
+
+encoder_dims = [32, 64, 128, num_classes]
 decoder_dims = list(reversed(encoder_dims))
+activation_types = ['elu', 'elu', 'elu', 'softmax']
+# denoising cost starts from top decode layer
+denoise_cost = [0.1, 0.1, 10, 1000]
+
 print(encoder_dims, decoder_dims)
-a_ladder = Ladder( 4, encoder_dims, decoder_dims, 0.3)
+a_ladder = Ladder( 4, encoder_dims, decoder_dims,
+activation_types, denoise_cost, 0.3)
 a_ladder.launch()
