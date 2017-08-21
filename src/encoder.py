@@ -7,13 +7,9 @@ import os
 import math
 
 class encode_layer():
-    def __init__(self, d_out, activation_type,
-    train_bn_scaling, noise, batch_size):
-        #self.data = data
-        #self.d_in = d_in
+    def __init__(self, d_out, activation_type, noise, batch_size):
         self.d_out = d_out
         self.activation_type = activation_type
-        self.train_bn_scaling = train_bn_scaling
         self.noise = noise
         self.batch_size = batch_size
 
@@ -21,7 +17,7 @@ class encode_layer():
         # elu activation: only beta shift is computed
         # softmax: beta, gamma are trained
         self.bn_beta = var_const_init(0, [d_out], 'beta')
-        if self.train_bn_scaling:
+        if self.activation_type == 'softmax':
             self.bn_gamma = var_const_init(1, [d_out], 'gamma')
 
         # store z_pre, z to be used in calculation of reconstruction cost
@@ -35,7 +31,7 @@ class encode_layer():
 
     def _post_bn_shift_scale(self, x):
         t = x + self.bn_beta
-        if self.train_bn_scaling:
+        if self.activation_type == 'softmax':
             t = tf.multiply(t, self.bn_gamma)
         return t
 
@@ -43,16 +39,16 @@ class encode_layer():
         if self.activation_type == 'elu':
             return tf.nn.elu(h)
         if self.activation_type == 'softmax':
-            #with tf.variable_scope(tf.get_variable_scope(), reuse=None):
-            #    h = tf.layers.dense(h, 200, name = 'fc_end')
-            #h = tf.nn.max_pool(h, ksize = [1, 2, 2, 1], strides = [1, 2, 2, 1], padding = 'VALID')
-            return h#tf.reshape( h, shape = [64, -1] ) #tf.nn.softmax(h)
+            # to maintain encode/decode layer dim symmetry, actual prediction
+            # occurs in ladder.py
+            return h
         raise Exception('activation func %s not found ' %(self.activation_type))
 
-    def forward_clean(self, h):
+    def forward_clean(self, h, first_pass = False):
         # convolution version of linear layer op: W_l h_(l-1)
-        self.buffer_z_pre = conv(h, filters = self.d_out)#, name = str(self.d_out))
-        #print('z_pre: ', self.buffer_z_pre)
+        with tf.variable_scope(str(self.d_out), reuse = not first_pass) as scope:
+            print('clean', self.d_out, not first_pass)
+            self.buffer_z_pre = conv(h, filters = self.d_out, name = str(self.d_out))
 
         # batchnorm w/ no shift or scale
         self.buffer_z = batch_normalize(self.buffer_z_pre)
@@ -63,9 +59,11 @@ class encode_layer():
         h_post = self._activation( h_post )
         return h_post
 
-    def forward_noise(self, tilde_h):
+    def forward_noise(self, tilde_h, first_pass = False):
         # use bias or no? str(self.d_out)
-        z_pre = conv(tilde_h, filters = self.d_out)#, name = str(self.d_out))
+        with tf.variable_scope(str(self.d_out), reuse = not first_pass) as scope:
+            print('noise', self.d_out, not first_pass)
+            z_pre = conv(tilde_h, filters = self.d_out, name = str(self.d_out))
 
         z_pre_norm = batch_normalize(z_pre)
         noise = tf.random_normal( tf.shape(z_pre_norm), mean = 0, stddev=self.noise )
@@ -76,7 +74,7 @@ class encode_layer():
         return tilde_h_post
 
 class encoder():
-    def __init__(self, d_encoders, activation_types, train_batch_norms, noise_std, batch_size):
+    def __init__(self, d_encoders, activation_types, noise_std, batch_size):
         self.noise = noise_std
         self.encoder_layers = []
         self.first_layer_shape = batch_size
@@ -85,28 +83,27 @@ class encoder():
 
             d_output = d_encoders[i]
             activation = activation_types[i]
-            train_batch_norm = train_batch_norms[i]
             self.encoder_layers.append( encode_layer(
-            d_output, activation, train_batch_norm, noise_std, batch_size) )
+            d_output, activation, noise_std, batch_size) )
 
-    def forward_clean(self, x):
+    def forward_clean(self, x, first_pass = False):
         h = x
         for encoder_layer in self.encoder_layers:
-            h = encoder_layer.forward_clean(h)
+            h = encoder_layer.forward_clean(h, first_pass)
         return h
 
-    def forward_noise(self, x):
+    def forward_noise(self, x, first_pass = False):
         noise = tf.random_normal( tf.shape(x), mean = 0, stddev=self.noise )
         h = x + noise
         for encoder_layer in self.encoder_layers:
-            h = encoder_layer.forward_noise(h)
-            print('encoder noise forward: ', h.shape)
+            h = encoder_layer.forward_noise(h, first_pass)
+            #print('encoder noise forward: ', h.shape)
         return h
 
     def collect_stored_var(self, var_name, reverse = True ):
         layer_vars_collected = []
         for encoder_layer in self.encoder_layers:
             layer_vars_collected.append( encoder_layer.get(var_name) )
-        if reverse:
+        if reverse: # as decoder input
             layer_vars_collected.reverse()
         return layer_vars_collected
