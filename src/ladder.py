@@ -149,7 +149,6 @@ class Ladder:
                     step += 1
                 save_path = saver.save(sess, "./saved_ladder")
 
-#
 encoder_dims = [20, 40, 80, 160, num_classes]
 decoder_dims = list(reversed(encoder_dims))
 print(encoder_dims, decoder_dims)
