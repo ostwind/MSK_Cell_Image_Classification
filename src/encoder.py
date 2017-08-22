@@ -45,7 +45,7 @@ class encode_layer():
         if self.activation_type == 'softmax':
             # to maintain encode/decode layer dim symmetry, actual prediction
             # occurs in ladder.py
-            # no technology to unpool (arg max don't work on cpu)
+            # no technology to unpool (arg max don't work on cpu), so save for decoder
             self.buffer_h = h
 
             with tf.variable_scope('downsampling', reuse = not first_pass):
@@ -56,7 +56,7 @@ class encode_layer():
                 preds = tf.layers.dense( pooled , 5, name = 'preds', activation = tf.nn.elu)
                 preds = self._post_bn_shift_scale(batch_normalize(preds))
             return preds
-    
+
     def forward_clean(self, h, labeled, first_pass = False):
         # convolution version of linear layer op: W_l h_(l-1)
         with tf.variable_scope(str(self.d_out), reuse = not first_pass) as scope:
@@ -127,6 +127,6 @@ class encoder():
         layer_vars_collected = []
         for encoder_layer in self.encoder_layers:
             layer_vars_collected.append( encoder_layer.get(var_name) )
-        if reverse: # as decoder input
+        if reverse: # as decoder input, appearance of tensors reversed
             layer_vars_collected.reverse()
         return layer_vars_collected

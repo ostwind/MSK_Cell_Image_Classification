@@ -37,9 +37,6 @@ class Ladder:
             # first pass is a bool that sets tf.variable_scope's reuse param
             noisy_labeled_logits = self.encoder.forward_noise(input_batch,
             labeled = True, first_pass = True)
-            # pooling layer followed by fc to decrease memory usage and regularize
-            #with tf.variable_scope('downsample'):
-            #    output = downsample(noisy_labeled_logits, num_classes = num_classes)
 
             with tf.control_dependencies([noisy_labeled_logits]):
                 self.xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -62,11 +59,11 @@ class Ladder:
         with tf.name_scope('decoder_UnsupervisedLoss'):
             self.hat_z_array = self.decoder.pre_reconstruction(self.tilde_zs, self.encoder.buffer_h)
             self.normed_hat_zs = self.decoder.reconstruction(self.hat_z_array, self.z_pre_layers)
-            self.unsupervised_loss = 0
 
             assert len(self.z_layers) == len(self.normed_hat_zs)
             assert len(self.z_layers) == len(self.denoise_costs)
 
+            self.unsupervised_loss = 0
             for cost_lambda, z, hat_z in zip(
             self.denoise_costs, self.z_layers, self.normed_hat_zs ):
                 # process the entire batch?
@@ -79,14 +76,7 @@ class Ladder:
         with tf.name_scope('eval'):
             clean_test_logits = self.encoder.forward_clean(input_batch,
             labeled = True)
-
-            #with tf.variable_scope('downsample', reuse= True):
-            #    clean_fc = downsample( clean_test_logits, num_classes = num_classes )
-
             self.preds = tf.cast(tf.argmax( clean_test_logits, 1), tf.int32)
-
-            #correct = tf.nn.in_top_k(self.preds, input_labels_batch, 1)
-            #self.accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
 
             with tf.control_dependencies([self.preds]):
                 self.batch_confusion = tf.confusion_matrix(input_labels_batch, self.preds,
@@ -151,10 +141,10 @@ class Ladder:
                         feed_dict = {labeled: True, training: False})
                         print(matrix)
 
-                    step += 1
-
                     if step % 200 == 0:
                         save_path = saver.save(sess, "./saved_ladder")
+
+                    step += 1
 
 dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
 original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
@@ -186,7 +176,7 @@ encoder_dims = [20, 40, 80]#, 80]
 decoder_dims = list(reversed(encoder_dims))
 activation_types = ['elu', 'elu', 'softmax']
 # denoising cost starts from top decode layer
-denoise_cost = [0.1, 0.1, 1000]
+denoise_cost = [0.1, 10, 1000]
 
 print(encoder_dims, decoder_dims)
 a_ladder = Ladder( 4, encoder_dims, decoder_dims,
