@@ -34,16 +34,14 @@ class decode_layer():
         hat_z = tf.multiply( tilde_z - mu, v ) + mu
         return hat_z
 
-    def denoise(self, tilde_z, u, first_pass = False):
+    def denoise(self, tilde_z, u):
         # how does weight sharing occur in the decoder?
         self.buffer_hat_z = self.g(tilde_z, u )
 
         if self.d_out: # not the last decode layer, so compute u for next layer
-            #print(not first_pass, self.d_in)
-            #with tf.variable_scope(str(self.d_in), reuse = not first_pass) as scope:
             t = tf.layers.conv2d_transpose(self.buffer_hat_z,
             filters = self.d_out, kernel_size = 3,
-            padding = 'SAME', use_bias = False,
+            padding = 'SAME', #use_bias = False,
             name = 'decoder%s' %(self.d_in) )
 
             u_below = batch_normalize( t )
@@ -52,7 +50,7 @@ class decode_layer():
             return None
 
 class decoder():
-    def __init__(self, d_decoders, input_dim):
+    def __init__(self, d_decoders):
         self.decode_layers = []
         for i in range(len(d_decoders)):
             d_in = d_decoders[ i  ]
@@ -69,16 +67,13 @@ class decoder():
 
         hat_z_array = []
         u = batch_normalize(encoder_logit)
-        first_pass = True
 
         for i in range(len(self.decode_layers)):
             tilde_z = tilde_zs[i]
             decode_layer = self.decode_layers[i]
 
-            u = decode_layer.denoise(tilde_z, u, first_pass = first_pass)
+            u = decode_layer.denoise(tilde_z, u)
             hat_z_array.append(decode_layer.buffer_hat_z)
-
-            first_pass = False
 
         return hat_z_array
 

@@ -12,6 +12,12 @@ from encoder import encoder
 from decoder import decoder
 from model_util import downsample, inputs
 
+def reset_graph(seed=42):
+    tf.reset_default_graph()
+    tf.set_random_seed(seed)
+    np.random.seed(seed)
+reset_graph()
+
 class Ladder:
     def __init__(self, n_epochs, encoder_layer_dims, decoder_layer_dims,
     activation_types, denoise_costs, noise_std):
@@ -25,33 +31,36 @@ class Ladder:
         activation_types = activation_types,
         noise_std = noise_std, batch_size = self.batch_size)
 
-        self.decoder = decoder(decoder_layer_dims, 0)
+        self.decoder = decoder(decoder_layer_dims)
 
         with tf.name_scope('noisy_labeled_SupervisedLoss'):
             # first pass is a bool that sets tf.variable_scope's reuse param
-            noisy_labeled_logits = self.encoder.forward_noise(input_batch, first_pass = True)
+            noisy_labeled_logits = self.encoder.forward_noise(input_batch,
+            labeled = True, first_pass = True)
             # pooling layer followed by fc to decrease memory usage and regularize
-            with tf.variable_scope('downsample'):
-                output = downsample(noisy_labeled_logits, num_classes = num_classes)
+            #with tf.variable_scope('downsample'):
+            #    output = downsample(noisy_labeled_logits, num_classes = num_classes)
 
-            with tf.control_dependencies([output]):
+            with tf.control_dependencies([noisy_labeled_logits]):
                 self.xentropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=output, labels=input_labels_batch)
+                logits=noisy_labeled_logits, labels=input_labels_batch)
                 self.supervised_loss = tf.reduce_mean(self.xentropy)
 
         with tf.name_scope('noisy_unlabeled'):
-            noisy_unlabeled_logits = self.encoder.forward_noise(input_batch)
+            noisy_unlabeled_logits = self.encoder.forward_noise(
+            input_batch, labeled = False)
             with tf.control_dependencies([noisy_unlabeled_logits]):
                 self.tilde_zs = self.encoder.collect_stored_var(var_name = 'buffer_tilde_z')
 
         with tf.name_scope('clean_unlabeled'):
-            clean_unlabeled_logits = self.encoder.forward_clean(input_batch )
+            clean_unlabeled_logits = self.encoder.forward_clean(input_batch,
+            labeled = False )
             with tf.control_dependencies([clean_unlabeled_logits]):
                 self.z_pre_layers = self.encoder.collect_stored_var(var_name = 'buffer_z_pre')
                 self.z_layers = self.encoder.collect_stored_var(var_name = 'buffer_z')
 
         with tf.name_scope('decoder_UnsupervisedLoss'):
-            self.hat_z_array = self.decoder.pre_reconstruction(self.tilde_zs, noisy_unlabeled_logits)
+            self.hat_z_array = self.decoder.pre_reconstruction(self.tilde_zs, self.encoder.buffer_h)
             self.normed_hat_zs = self.decoder.reconstruction(self.hat_z_array, self.z_pre_layers)
             self.unsupervised_loss = 0
 
@@ -68,14 +77,16 @@ class Ladder:
             self.test_op = self.optimizer.minimize(self.loss)
 
         with tf.name_scope('eval'):
-            clean_test_logits = self.encoder.forward_clean(input_batch)
+            clean_test_logits = self.encoder.forward_clean(input_batch,
+            labeled = True)
 
-            with tf.variable_scope('downsample', reuse= True):
-                clean_fc = downsample( clean_test_logits, num_classes = num_classes )
+            #with tf.variable_scope('downsample', reuse= True):
+            #    clean_fc = downsample( clean_test_logits, num_classes = num_classes )
 
-            self.preds = tf.cast(tf.argmax(clean_fc, 1), tf.int32)
-            correct = tf.nn.in_top_k(logits, input_labels_batch, 1)
-            self.accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
+            self.preds = tf.cast(tf.argmax( clean_test_logits, 1), tf.int32)
+
+            #correct = tf.nn.in_top_k(self.preds, input_labels_batch, 1)
+            #self.accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
 
             with tf.control_dependencies([self.preds]):
                 self.batch_confusion = tf.confusion_matrix(input_labels_batch, self.preds,
@@ -87,7 +98,6 @@ class Ladder:
 
                 # Create the update op for doing a "+=" accumulation on the batch
                 self.confusion_update = self.confusion.assign( self.confusion + self.batch_confusion )
-                #self.confusion_update = tf.add(confusion, batch_confusion)
 
     def _create_record(self):
         with tf.name_scope('records'):
@@ -116,24 +126,21 @@ class Ladder:
         with tf.Session(config=tf.ConfigProto(inter_op_parallelism_threads=4,
                                              intra_op_parallelism_threads=4)) as sess:
             self.init.run()
-            self._create_record()
+            #self._create_record()
             if restore and os.path.isfile('./saved_ladder') :
-                saver.restore(sess, './saved_ladder')
+               saver.restore(sess, './saved_ladder')
             tf.train.start_queue_runners(sess = sess)
             step = 0
 
             for epoch in range(self.n_epochs):
                 for i in range(training_set_size // 64):
 
-                    s_loss = sess.run(
-                    [self.supervised_loss], feed_dict = {
-                    labeled: True, training: True})
+                    s_loss = sess.run([self.supervised_loss])
 
-                    sess.run([self.tilde_zs, self.z_pre_layers, self.z_layers])
+                    sess.run([self.tilde_zs, self.z_pre_layers, self.z_layers],
+                    feed_dict = {labeled: False, training: True})
 
-                    _, total_loss = sess.run(
-                    [self.test_op, self.loss], feed_dict = {
-                    labeled: True, training: True})
+                    _, total_loss = sess.run([self.test_op, self.loss])
 
                     if step % 20 == 0:
                         print( step, s_loss[0], total_loss - s_loss[0], total_loss)
@@ -161,7 +168,7 @@ with tf.name_scope('input'):
     test_batch, test_labels_batch, test_fnames = inputs(test_path)
     unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames = inputs(unlabeled)
 
-    labeled = tf.placeholder_with_default(False, shape = (), name = 'labeled_bool')
+    labeled = tf.placeholder_with_default(True, shape = (), name = 'labeled_bool')
     training = tf.placeholder_with_default(True, shape=(), name = 'train_bool')
 
     input_batch, input_labels_batch, input_fnames = tf.cond(labeled,
@@ -174,11 +181,12 @@ num_classes = 5
 training_set_size = len([
 name for name in os.listdir(labeled_path) if os.path.isfile(labeled_path + name)])
 
-encoder_dims = [32, 64, 128, num_classes]
+# do not let 2 layer dims be the same
+encoder_dims = [20, 40, 80]#, 80]
 decoder_dims = list(reversed(encoder_dims))
-activation_types = ['elu', 'elu', 'elu', 'softmax']
+activation_types = ['elu', 'elu', 'softmax']
 # denoising cost starts from top decode layer
-denoise_cost = [0.1, 0.1, 10, 1000]
+denoise_cost = [0.1, 0.1, 1000]
 
 print(encoder_dims, decoder_dims)
 a_ladder = Ladder( 4, encoder_dims, decoder_dims,
