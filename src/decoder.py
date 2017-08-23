@@ -26,9 +26,10 @@ class decode_layer():
         a9 = var_const_init(0, input_shape, 'a9')
         a10 = var_const_init(0, input_shape, 'a10')
 
-        mu = tf.multiply( a1, tf.sigmoid( tf.multiply(a2, u) + a3)   ) + \
+        #tf.sigmoid was used in paper, better computation + perf w/ elu
+        mu = tf.multiply( a1, tf.nn.elu( tf.multiply(a2, u) + a3)   ) + \
              tf.multiply(a4, u) + a5
-        v = tf.multiply( a6, tf.sigmoid( tf.multiply(a7, u) + a8)   ) + \
+        v = tf.multiply( a6, tf.nn.elu( tf.multiply(a7, u) + a8)   ) + \
              tf.multiply(a9, u) + a10
 
         hat_z = tf.multiply( tilde_z - mu, v ) + mu

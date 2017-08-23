@@ -69,7 +69,7 @@ class Ladder:
                 # process the entire batch?
                 self.unsupervised_loss += cost_lambda * tf.losses.mean_squared_error(hat_z, z)
 
-        with tf.name_scope('total_loss'):
+        with tf.name_scope('loss'):
             self.loss = self.supervised_loss + self.unsupervised_loss
             self.test_op = self.optimizer.minimize(self.loss)
 

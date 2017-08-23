@@ -45,16 +45,17 @@ class encode_layer():
         if self.activation_type == 'softmax':
             # to maintain encode/decode layer dim symmetry, actual prediction
             # occurs in ladder.py
-            # no technology to unpool (arg max don't work on cpu), so save for decoder
+            # no technology to unpool (arg max pool don't work on cpu), so save for decoder
             self.buffer_h = h
 
             with tf.variable_scope('downsampling', reuse = not first_pass):
                 pooled = tf.nn.max_pool(h,
-                ksize= [1,2,2,1], strides=[1,2,2,1], padding= 'VALID')
+                ksize= [1,2,2,1], strides=[1,2,2,1], padding= 'SAME')
                 pooled = tf.reshape( pooled, shape = [64, 25*25*self.d_out] )
 
-                preds = tf.layers.dense( pooled , 5, name = 'preds', activation = tf.nn.elu)
-                preds = self._post_bn_shift_scale(batch_normalize(preds))
+                # placing activation after this layer causes loss to stay @ 1.60944 
+                preds = tf.layers.dense( pooled , 5, name = 'preds')
+                #preds = self._post_bn_shift_scale(batch_normalize(preds))
             return preds
 
     def forward_clean(self, h, labeled, first_pass = False):
