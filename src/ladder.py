@@ -135,13 +135,13 @@ class Ladder:
                     if step % 20 == 0:
                         print( step, s_loss[0], total_loss - s_loss[0], total_loss)
 
-                    if total_loss < 80 or step > 5100:
+                    if total_loss < 80 or step > 2000:
                         _, matrix = sess.run(
                         [self.confusion_update, self.confusion],
                         feed_dict = {labeled: True, training: False})
                         print(matrix)
 
-                    if step % 200 == 0:
+                    if step % 200 == 0 and step > 1:
                         save_path = saver.save(sess, "./saved_ladder")
 
                     step += 1
@@ -156,7 +156,7 @@ with tf.name_scope('input'):
     # two separate queues
     labeled_batch, labeled_labels_batch, labeled_fnames = inputs(labeled_path)
     test_batch, test_labels_batch, test_fnames = inputs(test_path)
-    unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames = inputs(unlabeled)
+    unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames = inputs(unlabeled, batch_size = 128)
 
     labeled = tf.placeholder_with_default(True, shape = (), name = 'labeled_bool')
     training = tf.placeholder_with_default(True, shape=(), name = 'train_bool')
@@ -172,11 +172,11 @@ training_set_size = len([
 name for name in os.listdir(labeled_path) if os.path.isfile(labeled_path + name)])
 
 # do not let 2 layer dims be the same
-encoder_dims = [20, 40, 80]#, 80]
+encoder_dims = [10, 20, 40, 80]#, 80]
 decoder_dims = list(reversed(encoder_dims))
-activation_types = ['elu', 'elu', 'softmax']
+activation_types = ['elu', 'elu', 'elu', 'softmax']
 # denoising cost starts from top decode layer
-denoise_cost = [0.1, 10, 1000]
+denoise_cost = [0.1, 0.1, 10, 1000]
 
 print(encoder_dims, decoder_dims)
 a_ladder = Ladder( 4, encoder_dims, decoder_dims,

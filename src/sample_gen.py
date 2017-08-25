@@ -16,6 +16,7 @@ import glob
 from random import shuffle
 from multiprocessing.dummy import Pool
 import itertools
+import tensorflow as tf
 
 # needed to make multiprocess work on Ubuntu OS
 # https://stackoverflow.com/questions/15639779/why-does-multiprocessing-use-only-a-single-core-after-i-import-numpy
@@ -30,61 +31,27 @@ unlabeled = os.path.join(dir, 'unlabeled/')
 test_set = os.path.join(dir, 'test_set/')
 tif_files = glob.glob(original_imgs_path + '*')
 
-def bool_mask(array):
-    threshold = 0
-    avg = np.mean(array)
-    return ((array-avg) > threshold).astype(int)
-
-def center(box):
-    c_x = (box[2] + box[0])/2
-    c_y = (box[3] + box[1])/2
-    return int(c_x), int(c_y)
-
-def box(center, length):
-    half_length = length // 2
-    x1, y1 = int( center[0]- half_length ), int( center[1]- half_length )
-    x2, y2 = int( center[0] + half_length ), int( center[1] + half_length )
-    return x1, y1, x2, y2
-
-#np.set_printoptions(threshold=np.nan)
-
-def calc_offset( r , length = img_length ):
-    x1, y1, x2, y2 = r
-    x_offset = (img_length - (x2-x1)) // 2
-    y_offset = (img_length - (y2-y1)) // 2
-    return x_offset, y_offset
-
-#TODO: ladder network
-
 def tensor(spot, r):
     spot_specific_tif_files = [ f for f in tif_files if spot ==  int(f.split('_')[-1].split('.')[0] )]
-    # dapi matrix for cell segmentation, zero out values outside seg. mask
-    dapi_file = [f for f in spot_specific_tif_files if 'S029' in f][0]
-    dapi_mask = np.array(Image.open(dapi_file) )
-    im_height, im_width = np.array(dapi_mask).shape
 
     # r is a 4-tuple (x1, y1, x2, y2)
     # check if img is out of bounds
-    x1, y1, x2, y2 = box( center( r ), length = img_length)
-    if x1 <= 0 or y1 <= 0 or x2 >= im_width or y2 >= im_height:
-       return np.array([False])
-
-    #dapi_mask = dapi_mask[ y1:y2 , x1:x2 ]
-    #dapi_mask = bool_mask(dapi_mask)
-
-    #result = np.zeros( (img_length, img_length) )
+    x1, y1, x2, y2 = r
     tensor = []
     for f in spot_specific_tif_files:
         # extract spot integer from filenames e.g. -filename-_spot_00X.tif
         im = Image.open(f)
         cell_im = im.crop( (x1, y1, x2, y2) )
-        # approx normalization to ~0-10 range
-        cell_matrix = (np.array(cell_im))/255
-        # cell_matrix = np.multiply(cell_matrix, dapi_mask)
-        tensor.append(cell_matrix)
+        cell_im = cell_im.convert(mode = 'F')
+        cell_im = cell_im.resize( (img_length, img_length), Image.ANTIALIAS )
+        tensor.append( np.array(cell_im) )
 
-    #CHANGE: if not convert to uint8, file sizes are huge
-    tensor = np.array(tensor).astype(np.uint8).transpose()
+    tensor = np.array(tensor).transpose()
+    #computes (x - mean) / adjusted_stddev
+    #tensor = tf.image.per_image_standardization(tensor)
+    tensor = (tensor - np.mean(tensor)) / np.std(tensor)
+    # if not convert to uint8, file sizes are huge
+    tensor = np.array(tensor).astype(np.uint8)
     return tensor
 
 def rotate(tensor): # dont rotate if there are enough samples
@@ -169,16 +136,23 @@ class dataset():
             return 5
 
         self.df['label_dec'] = self.df.label.apply(_binary_to_dec )
+        self.df = self.df[ self.df['label_dec'] != 5]
 
     def _train_test_split(self):
         self.df['proba'] = np.random.uniform(0, 1, self.df.shape[0])
 
-        self.df['unlabeled'] = self.df['label_dec'] == 5
-        self.df['labeled'] = self.df['label_dec'] != 5
+        #self.df['bad_unlabeled'] = self.df['label_dec'] == 5
+        #self.df['labeled'] = self.df['label_dec'] != 5
 
         #70/30 train/test split, of the labeled data
-        self.df['test_set'] =  (self.df.proba < 0.3) & self.df['labeled']
-        self.df['train_set'] =  ~self.df['test_set'] & self.df['labeled']
+        #self.df['test_set'] =  (self.df.proba < 0.3) & self.df['labeled']
+        #self.df['train_set'] =  ~self.df['test_set'] & self.df['labeled']
+        #self.df = self.df[ self.df.test_set | self.df.train_set  ]
+
+        # 30/10/60 train/test/unlabeled split
+        self.df['train_set'] =  (self.df.proba < 0.3) #& self.df['labeled']
+        self.df['unlabeled'] = (self.df.proba > 0.4) #& self.df['labeled']
+        self.df['test_set'] =  ~self.df['train_set'] & ~self.df['unlabeled'] #& self.df['labeled']
         #self.df = self.df[ self.df.test_set | self.df.train_set  ]
 
     def _write(self, row):
@@ -216,18 +190,3 @@ if __name__ == '__main__':
     results = pool.map( f, spots)
     pool.close()
     pool.join()
-
-def normalize(arr):
-    """
-    Linear normalization
-    http://en.wikipedia.org/wiki/Normalization_%28image_processing%29
-    """
-    arr = arr.astype('float')
-    # Do not touch the alpha channel
-    for i in range(32):
-        minval = arr[...,i].min()
-        maxval = arr[...,i].max()
-        if minval != maxval:
-            arr[...,i] -= minval
-            arr[...,i] *= (255.0/(maxval-minval))
-    return arr
