@@ -117,8 +117,8 @@ class Ladder:
                                              intra_op_parallelism_threads=4)) as sess:
             self.init.run()
             #self._create_record()
-            if restore and os.path.isfile('./saved_ladder') :
-               saver.restore(sess, './saved_ladder')
+            #if restore and os.path.isfile('./saved_ladder') :
+            #  saver.restore(sess, './saved_ladder')
             tf.train.start_queue_runners(sess = sess)
             step = 0
 
@@ -135,7 +135,7 @@ class Ladder:
                     if step % 20 == 0:
                         print( step, s_loss[0], total_loss - s_loss[0], total_loss)
 
-                    if total_loss < 80 or step > 2000:
+                    if step > 4900:
                         _, matrix = sess.run(
                         [self.confusion_update, self.confusion],
                         feed_dict = {labeled: True, training: False})
@@ -153,10 +153,11 @@ unlabeled = os.path.join(dir, 'unlabeled/')
 test_path = os.path.join(dir, 'test_set/')
 
 with tf.name_scope('input'):
-    # two separate queues
+    # three separate queues, |unlabeled| >> |labeled|, so double or triple batchsize
+    # although in supervised settings, performance not stable w/ batchsize too large
     labeled_batch, labeled_labels_batch, labeled_fnames = inputs(labeled_path)
     test_batch, test_labels_batch, test_fnames = inputs(test_path)
-    unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames = inputs(unlabeled, batch_size = 128)
+    unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames = inputs(unlabeled, batch_size = 64)
 
     labeled = tf.placeholder_with_default(True, shape = (), name = 'labeled_bool')
     training = tf.placeholder_with_default(True, shape=(), name = 'train_bool')
@@ -166,17 +167,17 @@ with tf.name_scope('input'):
     lambda: (test_batch, test_labels_batch, test_fnames) ),
     lambda: (unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames))
 
-num_classes = 5
+num_classes = 6
 
 training_set_size = len([
 name for name in os.listdir(labeled_path) if os.path.isfile(labeled_path + name)])
 
 # do not let 2 layer dims be the same
-encoder_dims = [10, 20, 40, 80]#, 80]
+encoder_dims = [10, 20, 40]#, 80]
 decoder_dims = list(reversed(encoder_dims))
-activation_types = ['elu', 'elu', 'elu', 'softmax']
+activation_types = ['elu', 'elu', 'softmax']
 # denoising cost starts from top decode layer
-denoise_cost = [0.1, 0.1, 10, 1000]
+denoise_cost = [0.1, 10, 1000]
 
 print(encoder_dims, decoder_dims)
 a_ladder = Ladder( 4, encoder_dims, decoder_dims,

@@ -52,8 +52,7 @@ class encode_layer():
                 pooled = tf.nn.max_pool(h,
                 ksize= [1,2,2,1], strides=[1,2,2,1], padding= 'SAME')
                 pooled = tf.reshape( pooled, shape = [64, 25*25*self.d_out] )
-                pooled = tf.layers.dense(pooled, 200, name = 'fc', activation = tf.nn.elu)
-
+                #pooled = tf.layers.dense(pooled, 200, name = 'fc', activation = tf.nn.elu)
                 # placing activation after this layer causes loss to stay @ 1.60944
                 preds = tf.layers.dense( pooled , 5, name = 'preds')
                 #preds = self._post_bn_shift_scale(batch_normalize(preds))

@@ -48,7 +48,8 @@ def tensor(spot, r):
 
     tensor = np.array(tensor).transpose()
     #computes (x - mean) / adjusted_stddev
-    #tensor = tf.image.per_image_standardization(tensor)
+    if np.std(tensor) == 0:
+        return np.zeros([1])
     tensor = (tensor - np.mean(tensor)) / np.std(tensor)
     # if not convert to uint8, file sizes are huge
     tensor = np.array(tensor).astype(np.uint8)
@@ -71,7 +72,6 @@ def save(region, spot, cell_id, label, output_dir ):
     tensors = rotate(original_cell)
     cell_orientation = 0
     for t in tensors:
-        #print(type(t), t.shape)
         assert t.shape == (img_length, img_length, 32), 'incorrect shape: %s' %(t.shape)
 
         filename = '%s_%s_%s.bin' %(cell_id, label, cell_orientation)
@@ -95,7 +95,7 @@ class dataset():
         self.labeled_directory = labeled
         self.test_directory = test_set
 
-        self._filter_by_spot( [spot])#[3, 4, 5, 6, 7, 8, 9, 10, 11] )
+        self._filter_by_spot( [spot])
         self._filter_by_dim_ratio()
 
         self._label()
@@ -136,12 +136,12 @@ class dataset():
             return 5
 
         self.df['label_dec'] = self.df.label.apply(_binary_to_dec )
-        self.df = self.df[ self.df['label_dec'] != 5]
+        #self.df = self.df[ self.df['label_dec'] != 5]
 
     def _train_test_split(self):
         self.df['proba'] = np.random.uniform(0, 1, self.df.shape[0])
 
-        #self.df['bad_unlabeled'] = self.df['label_dec'] == 5
+        self.df['ambiguous'] = self.df['label_dec'] == 5
         #self.df['labeled'] = self.df['label_dec'] != 5
 
         #70/30 train/test split, of the labeled data
@@ -150,9 +150,9 @@ class dataset():
         #self.df = self.df[ self.df.test_set | self.df.train_set  ]
 
         # 30/10/60 train/test/unlabeled split
-        self.df['train_set'] =  (self.df.proba < 0.3) #& self.df['labeled']
-        self.df['unlabeled'] = (self.df.proba > 0.4) #& self.df['labeled']
-        self.df['test_set'] =  ~self.df['train_set'] & ~self.df['unlabeled'] #& self.df['labeled']
+        self.df['test_set'] =  self.df.proba < 0.1 #~self.df['train_set'] & ~self.df['unlabeled'] #& self.df['labeled']
+        self.df['train_set'] = ~self.df['test_set'] & ~self.df['ambiguous']
+        self.df['unlabeled'] = ~self.df['test_set'] & ~self.df['train_set']
         #self.df = self.df[ self.df.test_set | self.df.train_set  ]
 
     def _write(self, row):
@@ -182,7 +182,7 @@ if __name__ == '__main__':
 
     np.random.seed(42)
 
-    spots = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17]
+    spots = list(range(3,18))
     def f(s):
         dataset(path, spot = s)
 

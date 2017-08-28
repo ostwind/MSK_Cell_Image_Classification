@@ -48,7 +48,7 @@ class MainApplication(Frame):
         self.radio_variable_pointers =[]
         window.bind("<Key>", lambda event: self.key(event) )
 
-        self.label_storage_path = self.dir+ '/' + 'labels.txt'
+        self.label_storage_path = './labels.txt'
         self.populate()
         self.import_labels()
 
@@ -108,12 +108,12 @@ class MainApplication(Frame):
             zoomed_order_subdir = self.zoomed + color_orders[c]
             for dirpath, dirs, files in os.walk( order_subdir ):
                 i = 0
+                files.sort()
                 for f in files:
                     i += 1
                     if '.png' in f and i < 101:
                         self.queues[c].append(order_subdir + '/' +  f)
                         self.zoom_queues[c].append(zoomed_order_subdir + '/' + f )
-
     def _img_open(self, path = ''):
         try:
             if path:
