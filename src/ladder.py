@@ -33,7 +33,7 @@ class Ladder:
 
         self.decoder = decoder(decoder_layer_dims)
 
-        with tf.name_scope('noisy_labeled_SupervisedLoss'):
+        with tf.name_scope('Noisy_Labeled'):
             # first pass is a bool that sets tf.variable_scope's reuse param
             noisy_labeled_logits = self.encoder.forward_noise(input_batch,
             labeled = True, first_pass = True)
@@ -43,20 +43,20 @@ class Ladder:
                 logits=noisy_labeled_logits, labels=input_labels_batch)
                 self.supervised_loss = tf.reduce_mean(self.xentropy)
 
-        with tf.name_scope('noisy_unlabeled'):
+        with tf.name_scope('Unlabeled'):
             noisy_unlabeled_logits = self.encoder.forward_noise(
             input_batch, labeled = False)
             with tf.control_dependencies([noisy_unlabeled_logits]):
                 self.tilde_zs = self.encoder.collect_stored_var(var_name = 'buffer_tilde_z')
 
-        with tf.name_scope('clean_unlabeled'):
+        #with tf.name_scope('clean_unlabeled'):
             clean_unlabeled_logits = self.encoder.forward_clean(input_batch,
             labeled = False )
             with tf.control_dependencies([clean_unlabeled_logits]):
                 self.z_pre_layers = self.encoder.collect_stored_var(var_name = 'buffer_z_pre')
                 self.z_layers = self.encoder.collect_stored_var(var_name = 'buffer_z')
 
-        with tf.name_scope('decoder_UnsupervisedLoss'):
+        with tf.name_scope('Decoder'):
             self.hat_z_array = self.decoder.pre_reconstruction(self.tilde_zs, self.encoder.buffer_h)
             self.normed_hat_zs = self.decoder.reconstruction(self.hat_z_array, self.z_pre_layers)
 
@@ -69,7 +69,7 @@ class Ladder:
                 # process the entire batch?
                 self.unsupervised_loss += cost_lambda * tf.losses.mean_squared_error(hat_z, z)
 
-        with tf.name_scope('loss'):
+        #with tf.name_scope('loss'):
             self.loss = self.supervised_loss + self.unsupervised_loss
             self.test_op = self.optimizer.minimize(self.loss)
 
@@ -108,9 +108,13 @@ class Ladder:
     #         self.
 
     def launch(self, restore = True):
+        #loss_record = tf.summary.scalar('loss', self.loss)
+        #file_writer = tf.summary.FileWriter(logdir + 'loss', tf.get_default_graph())
+
         print( 'steps per epoch: ', training_set_size // 64 )
         self.init = tf.global_variables_initializer()
         saver = tf.train.Saver()
+
         # multi-threads needed because  multi queues cause  tf to lock up
         # https://stackoverflow.com/questions/35414009/multiple-queues-causing-tf-to-lock-up
         with tf.Session(config=tf.ConfigProto(inter_op_parallelism_threads=4,
@@ -134,7 +138,7 @@ class Ladder:
 
                     if step % 20 == 0:
                         print( step, s_loss[0], total_loss - s_loss[0], total_loss)
-
+                        #file_writer.add_summary(total_loss, step)
                     if step > 4900:
                         _, matrix = sess.run(
                         [self.confusion_update, self.confusion],
