@@ -7,14 +7,12 @@ import os
 import math
 
 class encode_layer():
-    def __init__(self, d_out, activation_type, noise, batch_size):
+    def __init__(self, d_out, activation_type, noise):
         assert activation_type in ['elu', 'softmax'], print(
         'activation func %s not found ' %activation_type )
-
         self.d_out = d_out
         self.activation_type = activation_type
         self.noise = noise
-        self.batch_size = batch_size
 
         # shift and scale vars after Batch Normalization
         # elu activation: only beta shift is computed
@@ -50,12 +48,11 @@ class encode_layer():
 
             with tf.variable_scope('downsampling', reuse = not first_pass):
                 pooled = tf.nn.max_pool(h,
-                ksize= [1,2,2,1], strides=[1,2,2,1], padding= 'SAME')
+                ksize= [1,2,2,1], strides=[1,2,2,1], padding= 'VALID')
                 pooled = tf.reshape( pooled, shape = [64, 25*25*self.d_out] )
                 #pooled = tf.layers.dense(pooled, 200, name = 'fc', activation = tf.nn.elu)
-                # placing activation after this layer causes loss to stay @ 1.60944
+                # placing nonlinear activation on this layer is bad
                 preds = tf.layers.dense( pooled , 5, name = 'preds')
-                #preds = self._post_bn_shift_scale(batch_normalize(preds))
             return preds
 
     def forward_clean(self, h, labeled, first_pass = False):
@@ -77,8 +74,8 @@ class encode_layer():
         return h_post
 
     def forward_noise(self, tilde_h, labeled, first_pass = False):
-        # use bias or no? str(self.d_out)
         with tf.variable_scope(str(self.d_out), reuse = not first_pass) as scope:
+            # use bias or no? str(self.d_out)
             #print('noise', self.d_out, not first_pass)
             z_pre = conv(tilde_h, filters = self.d_out, name = str(self.d_out))
 
@@ -94,17 +91,15 @@ class encode_layer():
         return tilde_h_post
 
 class encoder():
-    def __init__(self, d_encoders, activation_types, noise_std, batch_size):
+    def __init__(self, d_encoders, activation_types, noise_std):
         self.noise = noise_std
         self.encoder_layers = []
-        self.first_layer_shape = batch_size
 
         for i in range(len(d_encoders)):
-
             d_output = d_encoders[i]
             activation = activation_types[i]
             self.encoder_layers.append( encode_layer(
-            d_output, activation, noise_std, batch_size) )
+            d_output, activation, noise_std) )
         self.buffer_h = None
 
     def forward_clean(self, x, labeled, first_pass = False):

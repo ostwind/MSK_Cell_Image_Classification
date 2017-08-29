@@ -65,19 +65,20 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
     # next code block to sort channel names alphabetically, since S001-> DAPI1
     # create channel names linked w/ tif_name, sort array,
     channel_names_to_sort = []
-    file_names = []
+    unique_channels = []
     for tif_name in tif_ledger[spot]:
-        channel_names_to_sort.append( channel_name(tif_name) )
-        file_names.append(tif_name)
-
+        channel_names_to_sort.append( [channel_name(tif_name), tif_name] )
+        unique_channels.append(channel_name(tif_name))
     # duplicate channel name check
-    if len(channel_names_to_sort) != len(set(channel_names_to_sort)):
+    if len(channel_names_to_sort) != len(set(unique_channels)):
         update_usr(listbox, 'files with duplicate channel names at %s, skipped! ' %(dirpath) )
         return False
 
     channel_names_to_sort.sort(key=lambda x: x[0])
 
-    for c_name, tif_name in zip(channel_names_to_sort, file_names):
+    for c_name_and_tif_name in channel_names_to_sort:
+
+        c_name, tif_name = c_name_and_tif_name
         image_child = ET.SubElement(root, "Image")
 
         path_child = ET.SubElement(

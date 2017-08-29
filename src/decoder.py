@@ -3,7 +3,7 @@ import tensorflow as tf
 from model_util import var_const_init, var_gauss_init, batch_normalize, conv
 
 class decode_layer():
-    def __init__(self, d_in, d_out):
+    def __init__(self, d_in, d_out ):
         self.d_out = d_out
         self.d_in = d_in
         # buffer for hat_z_l to be used for cost calculation
@@ -11,8 +11,8 @@ class decode_layer():
 
     def g(self, tilde_z, u): # denoising func
         # ok if reconstruction calc occurs w/ shape (64, 50, 50, d_in)?
-        # PARAMETRIZE
-        input_shape = np.zeros((64, 50, 50, self.d_in), dtype=np.float32)
+        batch_size, h, w, c = tf.shape(input_batch)
+        input_shape = np.zeros((batch_size, h, w, self.d_in), dtype=np.float32)
 
         a1 = var_const_init(0, input_shape,  'a1')
         a2 = var_const_init(1, input_shape, 'a2')
@@ -59,6 +59,7 @@ class decoder():
             if i < len(d_decoders) - 1 :
                 d_output = d_decoders[i + 1]
                 self.decode_layers.append( decode_layer(d_in, d_output ) )
+
             else:
                 self.decode_layers.append( decode_layer(d_in, None)  )
 

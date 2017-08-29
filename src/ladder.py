@@ -24,12 +24,12 @@ class Ladder:
         self.n_epochs = n_epochs
         self.denoise_costs = denoise_costs
 
-        self.batch_size = tf.shape(input_batch)
-        self.optimizer = tf.train.AdamOptimizer()
+        #self.batch_size = tf.shape(input_batch)[0]
+        self.optimizer = tf.train.AdamOptimizer(learning_rate = 0.002)
 
         self.encoder = encoder(encoder_layer_dims,
         activation_types = activation_types,
-        noise_std = noise_std, batch_size = self.batch_size)
+        noise_std = noise_std)
 
         self.decoder = decoder(decoder_layer_dims)
 
@@ -49,7 +49,6 @@ class Ladder:
             with tf.control_dependencies([noisy_unlabeled_logits]):
                 self.tilde_zs = self.encoder.collect_stored_var(var_name = 'buffer_tilde_z')
 
-        #with tf.name_scope('clean_unlabeled'):
             clean_unlabeled_logits = self.encoder.forward_clean(input_batch,
             labeled = False )
             with tf.control_dependencies([clean_unlabeled_logits]):
@@ -66,12 +65,10 @@ class Ladder:
             self.unsupervised_loss = 0
             for cost_lambda, z, hat_z in zip(
             self.denoise_costs, self.z_layers, self.normed_hat_zs ):
-                # process the entire batch?
                 self.unsupervised_loss += cost_lambda * tf.losses.mean_squared_error(hat_z, z)
 
-        #with tf.name_scope('loss'):
             self.loss = self.supervised_loss + self.unsupervised_loss
-            self.test_op = self.optimizer.minimize(self.loss)
+            self.train_op = self.optimizer.minimize(self.loss)
 
         with tf.name_scope('eval'):
             clean_test_logits = self.encoder.forward_clean(input_batch,
@@ -134,7 +131,7 @@ class Ladder:
                     sess.run([self.tilde_zs, self.z_pre_layers, self.z_layers],
                     feed_dict = {labeled: False, training: True})
 
-                    _, total_loss = sess.run([self.test_op, self.loss])
+                    _, total_loss = sess.run([self.train_op, self.loss])
 
                     if step % 20 == 0:
                         print( step, s_loss[0], total_loss - s_loss[0], total_loss)
@@ -161,7 +158,7 @@ with tf.name_scope('input'):
     # although in supervised settings, performance not stable w/ batchsize too large
     labeled_batch, labeled_labels_batch, labeled_fnames = inputs(labeled_path)
     test_batch, test_labels_batch, test_fnames = inputs(test_path)
-    unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames = inputs(unlabeled, batch_size = 64)
+    unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames = inputs(unlabeled, batch_size = 64*2)
 
     labeled = tf.placeholder_with_default(True, shape = (), name = 'labeled_bool')
     training = tf.placeholder_with_default(True, shape=(), name = 'train_bool')
@@ -177,13 +174,12 @@ training_set_size = len([
 name for name in os.listdir(labeled_path) if os.path.isfile(labeled_path + name)])
 
 # do not let 2 layer dims be the same
-encoder_dims = [10, 20, 40]#, 80]
 decoder_dims = list(reversed(encoder_dims))
-activation_types = ['elu', 'elu', 'softmax']
+activation_types = ['elu', 'elu', 'elu', 'softmax']
 # denoising cost starts from top decode layer
-denoise_cost = [0.1, 10, 1000]
+denoise_cost = [0.1, 0.1, 10, 1000]
 
 print(encoder_dims, decoder_dims)
 a_ladder = Ladder( 4, encoder_dims, decoder_dims,
-activation_types, denoise_cost, 0.3)
+activation_types, denoise_cost, 0.1)
 a_ladder.launch()
