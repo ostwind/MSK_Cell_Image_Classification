@@ -3,16 +3,15 @@ import tensorflow as tf
 from model_util import var_const_init, var_gauss_init, batch_normalize, conv
 
 class decode_layer():
-    def __init__(self, d_in, d_out ):
+    def __init__(self, d_in, d_out, input_dims ):
         self.d_out = d_out
         self.d_in = d_in
+        self.batch_size = input_dims
         # buffer for hat_z_l to be used for cost calculation
         self.buffer_hat_z = None
 
     def g(self, tilde_z, u): # denoising func
-        # ok if reconstruction calc occurs w/ shape (64, 50, 50, d_in)?
-        batch_size, h, w, c = tf.shape(input_batch)
-        input_shape = np.zeros((batch_size, h, w, self.d_in), dtype=np.float32)
+        input_shape = np.zeros((self.batch_size, 50, 50, self.d_in), dtype=np.float32)
 
         a1 = var_const_init(0, input_shape,  'a1')
         a2 = var_const_init(1, input_shape, 'a2')
@@ -51,17 +50,17 @@ class decode_layer():
             return None
 
 class decoder():
-    def __init__(self, d_decoders):
+    def __init__(self, d_decoders, unlabeled_batch_size):
         self.decode_layers = []
         for i in range(len(d_decoders)):
             d_in = d_decoders[ i  ]
 
             if i < len(d_decoders) - 1 :
                 d_output = d_decoders[i + 1]
-                self.decode_layers.append( decode_layer(d_in, d_output ) )
+                self.decode_layers.append( decode_layer(d_in, d_output, unlabeled_batch_size ) )
 
             else:
-                self.decode_layers.append( decode_layer(d_in, None)  )
+                self.decode_layers.append( decode_layer(d_in, None, unlabeled_batch_size)  )
 
     def pre_reconstruction(self, tilde_zs, encoder_logit): #encoder_logit <- tilde_h^L
         assert len(tilde_zs) == len(self.decode_layers), print(

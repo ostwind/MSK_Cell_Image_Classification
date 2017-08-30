@@ -22,7 +22,7 @@ reset_graph()
 
 dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
 original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
-train_path = os.path.join(dir, 'tensors/')
+train_path = os.path.join(dir, 'labeled/')
 test_path = os.path.join(dir, 'test_set/')
 
 with tf.name_scope('input'):
@@ -68,25 +68,24 @@ conv2_fmaps = 20
 pool3_fmaps = conv2_fmaps
 
 conv4_fmaps = 40
-pool5_fmaps = conv4_fmaps
+conv5_fmaps = 80
+pool6_fmaps = conv5_fmaps
 
 hidden1_drop = conv(input_batch, conv1_fmaps, training, 'conv1',
 ksize = 5)
 hidden2_drop = conv(hidden1_drop, conv2_fmaps, training, 'conv2',)
 pool3_flat = pool(hidden2_drop, pool3_fmaps, 'pool3',)
 
-#TODO: create 3rd queue for unlabeled data
-# => autoencoder, compute cost with hidden4_drop and denoise ?
-
 hidden4_drop = conv(pool3_flat, conv4_fmaps, training, 'conv4',)
-pool5_flat = pool(hidden4_drop, pool5_fmaps, 'pool5',
+hidden5_drop = conv(hidden4_drop, conv5_fmaps, training, 'conv5',)
+pool6_flat = pool(hidden5_drop, pool6_fmaps, 'pool6',
 flatten = True )
 
 n_fc1 = 200
 num_classes = 6
 
 with tf.name_scope("fc1"):
-    fc1 = tf.layers.dense(pool5_flat, n_fc1, name="fc1")#, activation = tf.nn.elu)
+    fc1 = tf.layers.dense(pool6_flat, n_fc1, name="fc1")#, activation = tf.nn.elu)
     bn3 = tf.nn.elu(batch_norm_layer(fc1))
     #print('fc1: ', fc1.get_shape())
 
@@ -149,9 +148,7 @@ write_op = tf.summary.merge_all() # put into session.run!
 
 def record(sess, step, epoch, n_epochs):
     if step % 50 == 0: # 8 updates per epoch
-        #if i % 30 == 0:
-        #    print(epoch, step, acc_train)
-        l, acc_train = sess.run([ loss_record, acc_record ], feed_dict = {training: True} )
+        l, acc_train = sess.run([ loss_record, acc_record ] )
         file_writer.add_summary(l, step)
         train_acc_writer.add_summary(acc_train, step)
 
@@ -185,8 +182,7 @@ def train( restore = False):
         for epoch in range(n_epochs):
             for i in range(training_set_size // 64):
                 record(sess, step, epoch, n_epochs)
-                _, loss_val = sess.run(
-                [training_op, write_op], feed_dict={training: True} )
+                _, loss_val = sess.run([training_op, write_op] )
                 step += 1
 
             save_path = saver.save(sess, "./saved_model")

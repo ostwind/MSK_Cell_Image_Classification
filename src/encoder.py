@@ -18,8 +18,8 @@ class encode_layer():
         # elu activation: only beta shift is computed
         # softmax: beta, gamma are trained
         self.bn_beta = var_const_init(0, [d_out], 'beta')
-        if self.activation_type == 'softmax':
-            self.bn_gamma = var_const_init(1, [d_out], 'gamma')
+        #if self.activation_type == 'softmax':
+        self.bn_gamma = var_const_init(1, [d_out], 'gamma')
 
         # store z_pre, z to be used in calculation of reconstruction cost
         self.buffer_z = None
@@ -33,8 +33,8 @@ class encode_layer():
 
     def _post_bn_shift_scale(self, x):
         t = x + self.bn_beta
-        if self.activation_type == 'softmax':
-            t = tf.multiply(t, self.bn_gamma)
+        #if self.activation_type == 'softmax':
+        t = tf.multiply(t, self.bn_gamma)
         return t
 
     def _activation(self, h, first_pass = False):

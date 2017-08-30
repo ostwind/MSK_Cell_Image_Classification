@@ -31,7 +31,7 @@ class Ladder:
         activation_types = activation_types,
         noise_std = noise_std)
 
-        self.decoder = decoder(decoder_layer_dims)
+        self.decoder = decoder(decoder_layer_dims, unlabeled_batch_size = 64)
 
         with tf.name_scope('Noisy_Labeled'):
             # first pass is a bool that sets tf.variable_scope's reuse param
@@ -158,7 +158,7 @@ with tf.name_scope('input'):
     # although in supervised settings, performance not stable w/ batchsize too large
     labeled_batch, labeled_labels_batch, labeled_fnames = inputs(labeled_path)
     test_batch, test_labels_batch, test_fnames = inputs(test_path)
-    unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames = inputs(unlabeled, batch_size = 64*2)
+    unlabeled_batch, unlabeled_labels_batch, unlabeled_fnames = inputs(unlabeled, batch_size = 64)
 
     labeled = tf.placeholder_with_default(True, shape = (), name = 'labeled_bool')
     training = tf.placeholder_with_default(True, shape=(), name = 'train_bool')
@@ -174,12 +174,13 @@ training_set_size = len([
 name for name in os.listdir(labeled_path) if os.path.isfile(labeled_path + name)])
 
 # do not let 2 layer dims be the same
+encoder_dims = [10, 20, 40]
 decoder_dims = list(reversed(encoder_dims))
-activation_types = ['elu', 'elu', 'elu', 'softmax']
+activation_types = ['elu', 'elu', 'softmax']
 # denoising cost starts from top decode layer
-denoise_cost = [0.1, 0.1, 10, 1000]
+denoise_cost = [0.1, 10, 1000]
 
 print(encoder_dims, decoder_dims)
 a_ladder = Ladder( 4, encoder_dims, decoder_dims,
-activation_types, denoise_cost, 0.1)
+activation_types, denoise_cost, 0)
 a_ladder.launch()
