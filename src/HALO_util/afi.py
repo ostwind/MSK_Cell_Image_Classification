@@ -58,7 +58,6 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
         @param dic tif_ledeger: keys of this dic are spots, provides a list of filenames
         which belong to this spot
     '''
-
     def _case_name(path):
         parent_dir = path.split('/')[-2]
         return parent_dir
@@ -72,12 +71,9 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
         update_usr(listbox, 'bad .tiff filename at %s , maybe a tif spot is not a number?' %(dirpath))
         update_usr(listbox, '!!!!!!!!!!!!!!!!!')
 
-
-
     root = ET.Element("ImageList")
     if mask_dir:
         path_to_write = mask_dir
-
     else:
         path_to_write = ''
 
@@ -88,7 +84,7 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
     for tif_name in tif_ledger[spot]:
         channel_names_to_sort.append( [channel_name(tif_name), tif_name] )
         unique_channels.append(channel_name(tif_name))
-    # duplicate channel name check
+
     if len(channel_names_to_sort) != len(set(unique_channels)):
         update_usr(listbox, '!!!!!!!!!!!!!!!!!')
         update_usr(listbox, 'files with duplicate channel names at %s, skipped! ' %(dirpath) )
@@ -112,7 +108,6 @@ def write_afi(dirpath, mask_dir, spot, tif_ledger):
         image_child, "ChannelName").text = c_name
 
     tree = ET.ElementTree(root)
-    #print(dirpath + filename)
     tree.write(dirpath + filename)
 
 def traverse(start_dir, mask_dir, num_stains):
@@ -139,7 +134,6 @@ def traverse(start_dir, mask_dir, num_stains):
                     update_usr(listbox, 'Spot %s at %s has %s .tif files' %(spot, dirpath, len(tif_ledger[spot])))
 
                 write_afi(dirpath, mask_dir, spot, tif_ledger)
-
     return tif_ledger
 
 def path_exists(path):
@@ -161,15 +155,14 @@ bot_label = Label(master, text="Number of stains \n used by study ")
 bot_label.grid(row=2, padx = 20)
 bot_label.config(font=('Courier',12))
 
+# fields corresponding to the three user inputs
+# input_dir, mask_dir and number of markers for this study
 e1 = Entry(master, textvariable=1, width=80)
 e1.grid(row=0, column=1, pady = 20, padx = 10)
-
 e2 = Entry(master, width = 80)
 e2.grid(row = 1, column = 1, pady = 20, padx = 10)
-
 e3 = Entry(master, width = 10)
 e3.grid(row = 2, column = 1)
-
 
 w = Canvas(master, width = 120, height=15)
 w.grid(row=4, column=1, pady = 0)
@@ -182,10 +175,8 @@ scrollbar.pack(side=RIGHT, fill=Y)
 
 listbox = Listbox(w, width = 120, height = 48)
 listbox.pack()
-
 listbox.config(yscrollcommand=scrollbar.set)
 scrollbar.config(command=listbox.yview)
-
 
 def update_usr(listbox, text = '', end = False ):
     if end:
@@ -194,6 +185,7 @@ def update_usr(listbox, text = '', end = False ):
     else:
         listbox.insert(0, '    ' + text)
         listbox.insert(0, ' ')
+
 def show_entry_fields(listbox):
    ''' calls afi writing functions according to user input into GUI
         e1 corresponds to first field, e2 to second field, so on.
@@ -206,7 +198,7 @@ def show_entry_fields(listbox):
        update_usr(listbox, 'Not a valid directory path')
        return
 
-   mask_dir = e2.get() #os.path.join(e2.get(), '')
+   mask_dir = e2.get()
 
    num_stains = (e3.get())
    if num_stains and not num_stains.isdigit():
@@ -217,7 +209,6 @@ def show_entry_fields(listbox):
    if not traverse(path, mask_dir, num_stains):
        update_usr(listbox, 'No .tif or .tiff found anywhere in %s' %(path))
        return
-
 
 Button(master, text='Link', command= lambda: show_entry_fields(listbox)).grid(row=3, column=1, pady=20)
 Button(master, text='Quit', command=master.quit).grid(row=3, column=0, sticky=W, padx = 75, pady=20)
