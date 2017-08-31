@@ -1,4 +1,8 @@
-''' cell_id | class probabilities | mislabeled     || HALO dataframe        || rgb order  || original imgs
+'''
+    Converts tensorflow output into an aggregate data file with pipeline for captioned cell profiles
+    also contains pyramid tif -> single page tif function, and multiple greyscale -> colored tif func
+
+    cell_id | class probabilities | mislabeled     || HALO dataframe        || rgb order  || original imgs
         |               |               |                   |                       |            |
         integrated dataframe w/ coordinates and probabilities                       colored images
                                                 |                                           |
@@ -16,7 +20,7 @@ import pickle
 
 def _retriev_recent_tf_log(subdir = 'tensor_logs'):
     path = './tf_logs/'
-    newest_tf_run = (os.listdir( path ))#, key = os.path.getctime )
+    newest_tf_run = (os.listdir( path ))
     newest_tf_run.sort()
     return path + newest_tf_run[-1] + '/' + subdir + '/'
 
@@ -68,20 +72,19 @@ def merge_main_output_dfs(recent_run_dir, main_df_path = '../data/cell_metadata.
             string_num = '0' + string_num
         return string_num
     main_df['spot'] = main_df.apply(lambda row: _add_zeros(row['spot']), axis = 1)
-
     main_df.to_csv( recent_run_dir + 'collected_tensor_data.csv', index = False )
     #print('main_df before merging: ', main_df.shape, 'output_df shape: ', output_df.shape)
 
 def take_first_image(input_directory, output_directory):
+    ''' converts pyramid tifs into single page tifs for sample_gen.py and postprocess.py
+    '''
     for subdir, dirs, files in os.walk(input_directory):
         for f in files:
-            if '.tif' in f and '012' not in f:
+            if '.tif' in f:
                 with TiffFile(str(input_directory) + f) as tif:
-                    #print(str(input_directory) + f)
                     matrix = tif[0].asarray()
                     im = Image.fromarray(matrix)
                     im.save(output_directory + f)
-                    #print(output_directory, f)
                     im.close()
 
 def colorized(file_paths, output_path, prepend_spot = ''):
@@ -97,7 +100,7 @@ def colorized(file_paths, output_path, prepend_spot = ''):
     for path in file_paths:
         matrix_stack.append( np.array(Image.open(path)) )
         img_name += path.split('/')[-1].split('_')[0] + '_'
-    #256
+    #1/256 is default coefficient for uint16 => uint8 conversion.
     weights = [300, 300, 256]
     RGB = np.zeros((matrix_stack[0].shape[0], matrix_stack[0].shape[1], 3), "uint8")
 
@@ -146,12 +149,8 @@ def make_cell_profile( row):
 
     f_names = [p.split('/')[-1] for p in relevant_color_paths]
     channels_in_combo = [f.split('.')[0][3:-1] for f in f_names]
-    #print(channels_in_combo)
-
-
 
     xmin, ymin, xmax, ymax = row['XMin'], row['YMin'], row['XMax'], row['YMax']
-
     for colored_path, channel_combo in zip(relevant_color_paths, channels_in_combo):
         save_name_color_variation = save_name + channel_combo + '.png'
 
@@ -163,18 +162,18 @@ def make_cell_profile( row):
         captioned_img = im.crop(box(c) )
         captioned_img = captioned_img.resize((435,335), Image.ANTIALIAS)
 
-        # draw2 = ImageDraw.Draw(captioned_img)
-        # draw2.text((0,0), " 0000 / %.2f | 0001 / %.2f | 1010 / %.2f "
-        # %(row['0000'], row['0001'], row['1010']), font = font)
-        # draw2.text((0,20), " 1100 / %.2f | 1110 / %.2f | others / %.2f"
-        # %(row['1100'], row['1110'], row['others']), font = font)
-        #
-        # draw2.text((0, 260), "spot-cell id / %s"
-        # %(row['Object Id'] ), font = font  )
-        # draw2.text((0, 280), "predicted class / %s | true class / %s"
-        # %(row['pred'], row['class'] ), font = font  )
-        # draw2.text((0, 300), "CD 3 Intensity / %.1f | CD 4 / %.1f \n CD 8 / %.1f | CD 20 / %.1f"
-        # %(row['Dye 2 Nucleus Intensity'], row['Dye 3 Nucleus Intensity'], row['Dye 4 Nucleus Intensity'], row['Dye 6 Nucleus Intensity'] ) , font = font )
+        draw2 = ImageDraw.Draw(captioned_img)
+        draw2.text((0,0), " 0000 / %.2f | 0001 / %.2f | 1010 / %.2f "
+        %(row['0000'], row['0001'], row['1010']), font = font)
+        draw2.text((0,20), " 1100 / %.2f | 1110 / %.2f | others / %.2f"
+        %(row['1100'], row['1110'], row['others']), font = font)
+
+        draw2.text((0, 260), "spot-cell id / %s"
+        %(row['Object Id'] ), font = font  )
+        draw2.text((0, 280), "predicted class / %s | true class / %s"
+        %(row['pred'], row['class'] ), font = font  )
+        draw2.text((0, 300), "CD 3 Intensity / %.1f | CD 4 / %.1f \n CD 8 / %.1f | CD 20 / %.1f"
+        %(row['Dye 2 Nucleus Intensity'], row['Dye 3 Nucleus Intensity'], row['Dye 4 Nucleus Intensity'], row['Dye 6 Nucleus Intensity'] ) , font = font )
 
         captioned_img.save(cropped + '/' + channel_combo + '/'
          + save_name_color_variation, 'PNG')
@@ -184,9 +183,6 @@ def make_cell_profile( row):
 
         zoomed_captioned_img.save(zoomed + '/' + channel_combo + '/'
          + save_name_color_variation, 'PNG')
-
-
-
 
     return 'done'
 

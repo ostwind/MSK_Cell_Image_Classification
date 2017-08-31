@@ -1,10 +1,10 @@
-''' contains sample data generation,
-    - tensor <= rotate <= save <= gen_tensors
+''' multithreaded sample data generation for ladder network and convnet
+    NOTE: Input dir must be tif files w/ GE naming scheme
+    (original pyramid tif not allowed, run take_first_image from postprocess.py
+    to convert GE pyramid tifs into  single-page tifs)
 
-    data augmentation,
+    data augmentation
     - rotate by X deg
-
-    and data feed mechanisms for feed_forward.py
 '''
 from PIL import Image, ImageDraw
 import numpy as np
@@ -108,7 +108,7 @@ class dataset():
         self.df = self.df[ self.df['Image Location'].str.contains( '|'.join(spots_to_strs)  ) ]
 
     def _filter_by_dim_ratio(self, ratio_threshold = 0.5):
-        # eliminate cells too rectangular
+        # eliminate cells too ellipsoid
         self.df['length'], self.df['width'] = (self.df.YMax - self.df.YMin,
                                          self.df.XMax - self.df.XMin)
 
@@ -136,13 +136,10 @@ class dataset():
             return 5
 
         self.df['label_dec'] = self.df.label.apply(_binary_to_dec )
-        #self.df = self.df[ self.df['label_dec'] != 5]
 
     def _train_test_split(self):
         self.df['proba'] = np.random.uniform(0, 1, self.df.shape[0])
-
         self.df['ambiguous'] = self.df['label_dec'] == 5
-        #self.df['labeled'] = self.df['label_dec'] != 5
 
         #70/30 train/test split, of the labeled data
         #self.df['test_set'] =  (self.df.proba < 0.3) & self.df['labeled']
@@ -150,10 +147,9 @@ class dataset():
         #self.df = self.df[ self.df.test_set | self.df.train_set  ]
 
         # 30/10/60 train/test/unlabeled split
-        self.df['test_set'] =  self.df.proba < 0.1 #~self.df['train_set'] & ~self.df['unlabeled'] #& self.df['labeled']
+        self.df['test_set'] =  self.df.proba < 0.1 
         self.df['train_set'] = ~self.df['test_set'] & ~self.df['ambiguous']
         self.df['unlabeled'] = ~self.df['test_set'] & ~self.df['train_set']
-        #self.df = self.df[ self.df.test_set | self.df.train_set  ]
 
     def _write(self, row):
         path_to_write = self.unlabeled_directory

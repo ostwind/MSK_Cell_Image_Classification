@@ -1,6 +1,3 @@
-'''
-'''
-
 from datetime import datetime
 now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
 root_logdir = 'tf_logs'
@@ -21,7 +18,7 @@ def reset_graph(seed=42):
 reset_graph()
 
 dir = os.path.normpath(os.getcwd() + os.sep + os.pardir +'/data')
-original_imgs_path = os.path.join(dir, 'original/') # cut first array from /real_original/
+original_imgs_path = os.path.join(dir, 'original/')
 train_path = os.path.join(dir, 'labeled/')
 test_path = os.path.join(dir, 'test_set/')
 
@@ -85,7 +82,7 @@ n_fc1 = 200
 num_classes = 6
 
 with tf.name_scope("fc1"):
-    fc1 = tf.layers.dense(pool6_flat, n_fc1, name="fc1")#, activation = tf.nn.elu)
+    fc1 = tf.layers.dense(pool6_flat, n_fc1, name="fc1")
     bn3 = tf.nn.elu(batch_norm_layer(fc1))
     #print('fc1: ', fc1.get_shape())
 
@@ -186,5 +183,4 @@ def train( restore = False):
                 step += 1
 
             save_path = saver.save(sess, "./saved_model")
-    #file_writer.close()
 train()

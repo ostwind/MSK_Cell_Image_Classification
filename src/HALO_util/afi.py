@@ -1,3 +1,8 @@
+''' researchers don't like manually importing tiff files (even if in batch)
+    and naming tiff channels individually. This program traverses a given directory
+    to generate .afi HALO objects whenever stacks of tif files (organized into spots) appear.
+'''
+
 import os
 import xml.etree.cElementTree as ET
 try:

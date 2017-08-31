@@ -1,3 +1,9 @@
+''' common functions for the model pipeline such as:
+    1. backpropgation variables
+    2. batch normalize and conv layers
+    3. 'objecting' input samples and queueing them into queue runners as batches
+'''
+
 import tensorflow as tf
 import os
 from random import shuffle
@@ -20,16 +26,12 @@ kernel_size = 3, strides = 1, padding = "SAME", name = 'f' ):
     # use_bias <- False, paper asks for matrix multiplication Wh in the case of MLP
     return tf.layers.conv2d(
     input_tensor, filters = filters, kernel_size = kernel_size, strides = strides,
-    padding = padding, name = name)#, use_bias = False)
+    padding = padding, name = name)
 
 def downsample(encoder_output_logit, num_classes):
     pooled = tf.nn.max_pool(encoder_output_logit,
     ksize= [1,2,2,1], strides=[1,2,2,1], padding= 'VALID')
-    #pooled = tf.layers.dense(pooled, 200, name="fc1", activation = tf.nn.elu)
-    #print('pooled shape ', pooled.shape)
     pooled = tf.reshape( pooled, shape = [64, 30*30*200] )
-
-    #output = tf.layers.dense(pooled, num_classes, name="fc2", activation = tf.nn.elu)
     return output
 
 ''' SAMPLE QUEUE GENERATION AND DEQUEUE FOR TF ladder.py
@@ -57,7 +59,6 @@ def read_my_data(filename_queue):
     reader = tf.FixedLengthRecordReader(record_bytes=record_bytes)
     result.key, value = reader.read(filename_queue)
 
-    #print(type(result.key), result.key)
       # Convert from a string to a vector of uint8 that is record_bytes long.
     record_bytes = tf.decode_raw(value, tf.uint8)
 

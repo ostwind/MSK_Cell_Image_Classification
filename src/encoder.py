@@ -50,8 +50,6 @@ class encode_layer():
                 pooled = tf.nn.max_pool(h,
                 ksize= [1,2,2,1], strides=[1,2,2,1], padding= 'VALID')
                 pooled = tf.reshape( pooled, shape = [64, 25*25*self.d_out] )
-                #pooled = tf.layers.dense(pooled, 200, name = 'fc', activation = tf.nn.elu)
-                # placing nonlinear activation on this layer is bad
                 preds = tf.layers.dense( pooled , 5, name = 'preds')
             return preds
 
