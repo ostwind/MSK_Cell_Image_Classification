@@ -29,13 +29,8 @@ def collect_spots(path):
     return spot_dict
 
 def channel_name(file_name):
-    file_name_in_list = file_name.split('_')
-    cname = file_name_in_list[0]
-
-    if len(file_name_in_list[1]) < 3:
-        cname += '_' + file_name_in_list[1]
-    if  len(file_name.split('_')[2]) < 3:
-        cname += '_' + file_name_in_list[2]
+    filename_as_list = file_name.split('_')
+    cname = filename_as_list[0]
 
     if 'dapi' in file_name:
         try:
@@ -45,7 +40,12 @@ def channel_name(file_name):
             update_usr(listbox, 'bad dapi filename (first part w/ num value) : %s ' %(cname))
             update_usr(listbox, '!!!!!!!!!!!!!!!!!')
 
-    return cname
+    if 'AFRemoved' in filename_as_list:
+        return '_'.join(filename_as_list[ : filename_as_list.index('AFRemoved') ])
+
+    else:
+        return cname
+
 
 def write_afi(dirpath, mask_dir, spot, tif_ledger):
     ''' Given where to write, which spot it is writing for
