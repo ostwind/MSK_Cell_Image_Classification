@@ -1,4 +1,4 @@
-# Hodgkin's Lymphoma Cell Classification (Memorial Sloan Kettering BIC)
+# Hodgkin's Lymphoma Cell Classification
 
 Tumor tissues and images were procured by the Ingo Mellinghoff Lab at Memorial Sloan Kettering Cancer Center as part of on-going oncology research. As such, the images are not publicly available. 
 
