@@ -21,9 +21,6 @@ Right angle rotations are applied to individual cell samples as data augmentatio
 The model is an implementation of the Ladder Network as described in [Rasmus et. al.](https://arxiv.org/abs/1507.02672). The pipeline from sample generation to postprocessing can be found under MSK_Cell_Image_Classification/src/ 
 ![alt text](https://github.com/ostwind/MSK_Cell_Image_Classification/blob/master/figures/network_archi.png)
 
-View on tensorboard:
-![alt text](https://github.com/ostwind/MSK_Cell_Image_Classification/blob/master/figures/ladder_network.png)
-
 ## Research UI
 
 To reduce the cost of generating our first labeled dataset, oncology researchers are prompted to proceed through the labeling process via an user-interface. This is found at MSK_Cell_Image_Classification/src/UI/run_UI.py. To assist in inputting images into HALO proprietary software, an automatic .afi writer is found in MSK_Cell_Image_Classification/src/HALO_util/afi.py.
